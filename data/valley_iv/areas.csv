@@ -1,7 +1,7 @@
-area,zipline_limit,defense_limit,pac_depot,pac_width,pac_height
-hub,20,10,70,70,70
-valley_pass,10,10,40,40,40
-aburrey_quarry,10,10,0,0,0
-originium_science_park,20,10,40,40,40
-origin_lodespring,25,10,0,0,0
-power_plateau,20,10,40,40,40
+area,zipline,defense,mining,pac_depot,pac_width,pac_height
+hub,20,10,25,70,70,70
+valley_pass,10,10,7,40,40,40
+aburrey_quarry,10,10,4,0,0,0
+originium_science_park,20,10,17,40,40,40
+origin_lodespring,25,10,20,0,0,0
+power_plateau,20,10,21,40,40,40

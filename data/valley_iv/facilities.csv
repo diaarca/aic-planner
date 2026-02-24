@@ -1,12 +1,10 @@
 facility,power
-easy_stash,5
-zipline_pylon,5
-zipline_tower,5
-electric_mining_rig,5
+zipline,5
+mining_rig,10
+defense,20
 protocol_stash,5
 refining_unit,5
 shredding_unit,5
-electric_mining_rig_mk_ii,10
 moulding_unit,10
 seed_picking_unit,10
 gearing_unit,10
