@@ -132,7 +132,7 @@ std::vector<Area> read_areas(const std::string& filename)
             a.name = row[0];
             a.area_facilities["zipline"] = std::stod(row[1]);
             a.area_facilities["defense"] = std::stod(row[2]);
-            a.area_facilities["mining_rig"] = std::stod(row[3]); // "mining" in CSV
+            a.area_facilities["mining_rig"] = std::stod(row[3]);
             a.pac_depot = std::stod(row[4]);
             a.pac_width = std::stod(row[5]);
             a.pac_height = std::stod(row[6]);
@@ -195,67 +195,6 @@ void update_products_with_factories(std::vector<Product>& products,
             p.factory_width = factory_data[p.name].width;
             p.factory_height = factory_data[p.name].height;
             p.factory_facilities = factory_data[p.name].facilities;
-        }
-    }
-}
-
-std::map<std::string, double> read_facilities(const std::string& filename)
-{
-    std::map<std::string, double> facilities;
-    std::ifstream file(filename);
-    if (!file.is_open())
-    {
-        throw std::runtime_error("Could not open facilities file: " + filename);
-    }
-    std::cout << "DEBUG: Reading facilities from: " << filename << std::endl;
-    std::string line;
-    std::getline(file, line); // Skip header
-
-    while (std::getline(file, line))
-    {
-        auto row = parse_csv_line(line);
-        if (row.size() >= 2)
-        {
-            facilities[row[0]] = std::stod(row[1]);
-        }
-    }
-    return facilities;
-}
-
-void update_products_with_fuels(std::vector<Product>& products,
-                                const std::string& filename)
-{
-    std::ifstream file(filename);
-    if (!file.is_open())
-    {
-        throw std::runtime_error("Could not open fuels file: " + filename);
-    }
-    std::cout << "DEBUG: Reading fuels from: " << filename << std::endl;
-    std::string line;
-    std::getline(file, line); // Skip header
-
-    struct FuelEntry
-    {
-        double power, duration;
-    };
-    std::map<std::string, FuelEntry> fuel_data;
-
-    while (std::getline(file, line))
-    {
-        auto row = parse_csv_line(line);
-        if (row.size() >= 3)
-        {
-            fuel_data[row[0]] = {std::stod(row[1]), std::stod(row[2])};
-        }
-    }
-
-    for (auto& p : products)
-    {
-        if (fuel_data.count(p.name))
-        {
-            p.is_fuel = true;
-            p.fuel_power = fuel_data[p.name].power;
-            p.fuel_duration = fuel_data[p.name].duration;
         }
     }
 }

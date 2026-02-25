@@ -1,7 +1,7 @@
 #pragma once
 
-#include <string>
 #include <map>
+#include <string>
 
 // Data structure for a product
 struct Product
@@ -16,9 +16,4 @@ struct Product
     double factory_height;
     double factory_depot;
     std::map<std::string, double> factory_facilities;
-
-    // Fuel related information
-    bool is_fuel = false;
-    double fuel_power = 0;
-    double fuel_duration = 0;
 };

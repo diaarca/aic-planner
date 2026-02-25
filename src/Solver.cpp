@@ -4,11 +4,8 @@
 
 Solver::Solver(const std::vector<Product>& products,
                const std::map<std::string, double>& mineral_limits,
-               const std::vector<Area>& areas,
-               const std::map<std::string, double>& facilities_power,
-               const std::map<std::string, std::pair<double, double>>& mineral_fuels)
-    : _products(products), _mineral_limits(mineral_limits), _areas(areas),
-      _facilities_power(facilities_power), _mineral_fuels(mineral_fuels)
+               const std::vector<Area>& areas)
+    : _products(products), _mineral_limits(mineral_limits), _areas(areas)
 {
 }
 
@@ -19,8 +16,6 @@ void Solver::solve()
     {
         _model = IloModel(_env);
         _qty_produced = IloNumVarArray(_env);
-        _qty_fuel_product = IloNumVarArray(_env);
-        _qty_fuel_mineral = IloNumVarArray(_env);
         _factories_in_area = IloArray<IloNumVarArray>(_env);
 
         instantiateVariables();
@@ -56,20 +51,10 @@ void Solver::instantiateVariables()
 {
     _qty_produced =
         IloNumVarArray(_env, _products.size(), 0, IloInfinity, ILOFLOAT);
-    _qty_fuel_product =
-        IloNumVarArray(_env, _products.size(), 0, IloInfinity, ILOFLOAT);
-    
+
     for (size_t i = 0; i < _products.size(); ++i)
     {
         _qty_produced[i].setName((_products[i].name + "_prod").c_str());
-        _qty_fuel_product[i].setName((_products[i].name + "_fuel").c_str());
-    }
-
-    _qty_fuel_mineral = IloNumVarArray(_env, _mineral_limits.size(), 0, IloInfinity, ILOFLOAT);
-    size_t m_idx = 0;
-    for (const auto& pair : _mineral_limits) {
-        _qty_fuel_mineral[m_idx].setName((pair.first + "_fuel").c_str());
-        m_idx++;
     }
 
     _factories_in_area = IloArray<IloNumVarArray>(_env, _products.size());
@@ -87,21 +72,16 @@ void Solver::instantiateVariables()
 
 void Solver::declareConstraints()
 {
-    // Objective: Maximize total value of net production
+    // Objective: Maximize total value of production
     IloExpr objective(_env);
     for (size_t i = 0; i < _products.size(); ++i)
     {
-        objective += _products[i].value * (_qty_produced[i] - _qty_fuel_product[i]);
+        objective += _products[i].value * _qty_produced[i];
     }
     _model.add(IloMaximize(_env, objective));
     objective.end();
 
-    // Net production must be non-negative
-    for (size_t i = 0; i < _products.size(); ++i) {
-        _model.add(_qty_produced[i] >= _qty_fuel_product[i]);
-    }
-
-    // Mineral limits (Ingredients + Fuel)
+    // Mineral limits (Ingredients)
     size_t m_idx = 0;
     for (const auto& pair : _mineral_limits)
     {
@@ -118,71 +98,12 @@ void Solver::declareConstraints()
                     _qty_produced[i];
             }
         }
-        
-        // Add mineral used as fuel
-        mineral_consumption_expr += _qty_fuel_mineral[m_idx];
 
         IloConstraint con = mineral_consumption_expr <= mineral_limit;
         con.setName(mineral_name.c_str());
         _model.add(con);
         mineral_consumption_expr.end();
-        m_idx++;
     }
-
-    // Power Constraints
-    IloExpr total_power_needed(_env);
-    // Area facilities power
-    for (size_t j = 0; j < _areas.size(); ++j) {
-        for (const auto& pair : _areas[j].area_facilities) {
-            const std::string& fac_name = pair.first;
-            double count = pair.second;
-            if (_facilities_power.count(fac_name)) {
-                total_power_needed += count * _facilities_power.at(fac_name);
-            }
-        }
-    }
-    // Factory facilities power
-    for (size_t i = 0; i < _products.size(); ++i) {
-        double factory_power = 0;
-        for (const auto& pair : _products[i].factory_facilities) {
-            const std::string& fac_name = pair.first;
-            double count = pair.second;
-            if (_facilities_power.count(fac_name)) {
-                factory_power += count * _facilities_power.at(fac_name);
-            }
-        }
-        for (size_t j = 0; j < _areas.size(); ++j) {
-            total_power_needed += _factories_in_area[i][j] * factory_power;
-        }
-    }
-
-    IloExpr total_energy_provided(_env);
-    // Product fuels
-    for (size_t i = 0; i < _products.size(); ++i) {
-        if (_products[i].is_fuel) {
-            total_energy_provided += _qty_fuel_product[i] * _products[i].fuel_power * _products[i].fuel_duration;
-        } else {
-            // Cannot use non-fuel product as fuel
-            _model.add(_qty_fuel_product[i] == 0);
-        }
-    }
-    // Mineral fuels
-    m_idx = 0;
-    for (const auto& pair : _mineral_limits) {
-        const std::string& mineral_name = pair.first;
-        if (_mineral_fuels.count(mineral_name)) {
-            double power = _mineral_fuels.at(mineral_name).first;
-            double duration = _mineral_fuels.at(mineral_name).second;
-            total_energy_provided += _qty_fuel_mineral[m_idx] * power * duration;
-        } else {
-            _model.add(_qty_fuel_mineral[m_idx] == 0);
-        }
-        m_idx++;
-    }
-
-    _model.add(total_energy_provided >= total_power_needed);
-    total_power_needed.end();
-    total_energy_provided.end();
 
     // Factory capacity constraints
     for (size_t i = 0; i < _products.size(); ++i)
@@ -256,9 +177,7 @@ void Solver::displaySolution()
     for (size_t i = 0; i < _products.size(); ++i)
     {
         double produced = _cplex.getValue(_qty_produced[i]);
-        double used_as_fuel = _cplex.getValue(_qty_fuel_product[i]);
-        double net = produced - used_as_fuel;
-        
+
         if (produced > 1e-6)
         {
             double total_factories = 0;
@@ -266,19 +185,9 @@ void Solver::displaySolution()
             {
                 total_factories += _cplex.getValue(_factories_in_area[i][j]);
             }
-            std::cout << _products[i].name << ": " << net << " net (produced: " << produced;
-            if (used_as_fuel > 1e-6) std::cout << ", fuel: " << used_as_fuel;
-            std::cout << ") [" << total_factories << " factories]" << std::endl;
+            std::cout << _products[i].name << ": " << produced << " units ["
+                      << total_factories << " factories]" << std::endl;
         }
-    }
-
-    size_t m_idx = 0;
-    for (const auto& pair : _mineral_limits) {
-        double fuel_usage = _cplex.getValue(_qty_fuel_mineral[m_idx]);
-        if (fuel_usage > 1e-6) {
-            std::cout << "Mineral " << pair.first << " used as fuel: " << fuel_usage << std::endl;
-        }
-        m_idx++;
     }
 
     std::cout << "\n--- Factory Placement ---" << std::endl;
@@ -320,13 +229,12 @@ void Solver::displaySolution()
     }
 
     std::cout << "\n--- Mineral Consumption (usage / limit) ---" << std::endl;
-    m_idx = 0;
     for (const auto& pair : _mineral_limits)
     {
         const std::string& mineral_name = pair.first;
         double mineral_limit = pair.second;
 
-        double total_consumed = _cplex.getValue(_qty_fuel_mineral[m_idx]);
+        double total_consumed = 0.0;
         for (size_t i = 0; i < _products.size(); ++i)
         {
             if (_products[i].mineral_consumption.count(mineral_name))
@@ -338,6 +246,5 @@ void Solver::displaySolution()
         }
         std::cout << mineral_name << ": " << total_consumed << " / "
                   << mineral_limit << std::endl;
-        m_idx++;
     }
 }
