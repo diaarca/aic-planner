@@ -1,5 +1,5 @@
 #include "Area.hpp"
-#include "DataReader.hpp"
+#include "Mineral.hpp"
 #include "Solver.hpp"
 #include <fstream>
 #include <iostream>
@@ -23,12 +23,10 @@ int main(int argc, char* argv[])
         std::string minerals_file = folder_path + "/minerals.csv";
         std::string products_file = folder_path + "/products.csv";
         std::string areas_file = folder_path + "/areas.csv";
-        std::string factories_file = folder_path + "/factories.csv";
 
-        auto mineral_limits = DataReader::read_minerals(minerals_file);
-        auto products = DataReader::read_products(products_file);
-        auto areas = DataReader::read_areas(areas_file);
-        DataReader::update_products_with_factories(products, factories_file);
+        auto mineral_limits = Mineral::readCSV(minerals_file);
+        auto products = Product::readCSV(products_file, mineral_limits);
+        auto areas = Area::readCSV(areas_file);
 
         if (products.empty() || mineral_limits.empty())
         {
@@ -36,6 +34,11 @@ int main(int argc, char* argv[])
                       << std::endl;
             return 1;
         }
+
+        // --- Toggle Display of Input Data Tables ---
+        // Mineral::print_table(mineral_limits);
+        // Product::print_table(products, mineral_limits);
+        // Area::print_table(areas);
 
         // Create solver and solve the model
         Solver solver(products, mineral_limits, areas);
