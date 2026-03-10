@@ -26,7 +26,13 @@ int main(int argc, char* argv[])
         std::string areas_file = folder_path + "/areas.csv";
         std::string fuels_file = folder_path + "/fuels.csv";
         std::string facilities_file = folder_path + "/facilities.csv";
-
+        {
+            std::ifstream f_test(fuels_file);
+            if (!f_test.good())
+            {
+                fuels_file = folder_path + "/batteries.csv";
+            }
+        }
         auto mineral_limits = Mineral::readCSV(minerals_file);
         auto products = Product::readCSV(products_file, mineral_limits);
         auto areas = Area::readCSV(areas_file);

@@ -71,26 +71,70 @@ void Solver::instantiateVariables()
             _factories_in_area[i][j].setName(name.c_str());
         }
     }
+
+    _num_batteries_active = IloIntVarArray(_env, _fuels.size(), 0, IloIntMax);
+    for (size_t i = 0; i < _fuels.size(); ++i)
+    {
+        _num_batteries_active[i].setName((_fuels[i].name + "_active").c_str());
+    }
 }
 
 void Solver::declareConstraints()
 {
-    // Objective: Maximize total value of production
+    // Mappings for easier lookup
+    std::map<std::string, size_t> product_map;
+    for (size_t i = 0; i < _products.size(); ++i)
+    {
+        product_map[_products[i].name] = i;
+    }
+
+    std::map<std::string, size_t> fuel_map;
+    for (size_t i = 0; i < _fuels.size(); ++i)
+    {
+        fuel_map[_fuels[i].name] = i;
+    }
+
+    std::map<std::string, size_t> mineral_map;
+    for (size_t i = 0; i < _mineral_limits.size(); ++i)
+    {
+        mineral_map[_mineral_limits[i].name] = i;
+    }
+
+    // Variables for fuel consumption (units per minute)
+    IloNumExprArray fuel_consumption_per_min(_env, _fuels.size());
+    for (size_t i = 0; i < _fuels.size(); ++i)
+    {
+        fuel_consumption_per_min[i] =
+            _num_batteries_active[i] * (60.0 / _fuels[i].duration);
+    }
+
+    // Objective: Maximize total net value (sold products)
     IloExpr objective(_env);
     for (size_t i = 0; i < _products.size(); ++i)
     {
-        objective += _products[i].value * _qty_produced[i];
+        IloExpr qty_sold(_env);
+        qty_sold += _qty_produced[i];
+        if (fuel_map.count(_products[i].name))
+        {
+            size_t fuel_idx = fuel_map.at(_products[i].name);
+            qty_sold -= fuel_consumption_per_min[fuel_idx];
+        }
+        objective += _products[i].value * qty_sold;
+        // Non-negative sold quantity
+        _model.add(qty_sold >= 0);
+        qty_sold.end();
     }
     _model.add(IloMaximize(_env, objective));
     objective.end();
 
-    // Mineral limits (Ingredients)
-    for (const auto& mineral : _mineral_limits)
+    // Mineral limits (Ingredients + Direct Fuel Usage)
+    for (size_t m = 0; m < _mineral_limits.size(); ++m)
     {
-        const std::string& mineral_name = mineral.name;
-        double mineral_limit = mineral.limit;
+        const std::string& mineral_name = _mineral_limits[m].name;
+        double mineral_limit = _mineral_limits[m].limit;
 
         IloExpr mineral_consumption_expr(_env);
+        // From production
         for (size_t i = 0; i < _products.size(); ++i)
         {
             if (_products[i].mineral_consumption.count(mineral_name))
@@ -99,6 +143,12 @@ void Solver::declareConstraints()
                     _products[i].mineral_consumption.at(mineral_name) *
                     _qty_produced[i];
             }
+        }
+        // From direct fuel usage (if the mineral is a fuel)
+        if (fuel_map.count(mineral_name))
+        {
+            size_t fuel_idx = fuel_map.at(mineral_name);
+            mineral_consumption_expr += fuel_consumption_per_min[fuel_idx];
         }
 
         IloConstraint con = mineral_consumption_expr <= mineral_limit;
@@ -201,26 +251,18 @@ void Solver::declareConstraints()
         }
     }
 
-    // Power provided by batteries
+    // Power provided by active batteries
     IloExpr power_supply(_env);
-    for (const auto& fuel : _fuels)
+    for (size_t i = 0; i < _fuels.size(); ++i)
     {
-        for (size_t i = 0; i < _products.size(); ++i)
-        {
-            if (_products[i].name == fuel.name)
-            {
-                double power_per_unit_per_min =
-                    (fuel.power * fuel.duration) / 60.0;
-                power_supply += _qty_produced[i] * power_per_unit_per_min;
-                break;
-            }
-        }
+        power_supply += _num_batteries_active[i] * _fuels[i].power;
     }
 
     _model.add(power_supply >= power_demand);
 
     power_demand.end();
     power_supply.end();
+    fuel_consumption_per_min.end();
 }
 
 bool Solver::solveModel()
@@ -356,43 +398,20 @@ void Solver::displaySolution()
     double total_needed = power_ziplines + power_defenses + power_factories;
     std::cout << "Total Power Needed: " << total_needed << std::endl;
 
-    std::cout << "\n--- Power Production (from batteries) ---" << std::endl;
+    std::cout << "\n--- Power Production (Optimal Battery Mix) ---" << std::endl;
     double total_supply = 0;
-    for (const auto& fuel : _fuels)
+    for (size_t i = 0; i < _fuels.size(); ++i)
     {
-        for (size_t i = 0; i < _products.size(); ++i)
+        double num_active = _cplex.getValue(_num_batteries_active[i]);
+        if (num_active > 0.5)
         {
-            if (_products[i].name == fuel.name)
-            {
-                double qty = _cplex.getValue(_qty_produced[i]);
-                if (qty > 1e-6)
-                {
-                    double power_per_unit_per_min =
-                        (fuel.power * fuel.duration) / 60.0;
-                    double supply = qty * power_per_unit_per_min;
-                    std::cout << fuel.name << ": " << qty << " units/min ("
-                              << supply << " avg power)" << std::endl;
-                    total_supply += supply;
-                }
-                break;
-            }
+            double supply = num_active * _fuels[i].power;
+            double consumption = num_active * (60.0 / _fuels[i].duration);
+            std::cout << _fuels[i].name << ": " << (int)(num_active + 0.5)
+                      << " active batteries (" << supply << " power, "
+                      << consumption << " units/min consumption)" << std::endl;
+            total_supply += supply;
         }
     }
     std::cout << "Total Power Provided: " << total_supply << std::endl;
-    std::cout << "Battery/min needed for region: " << std::endl;
-    for (const auto& fuel : _fuels)
-    {
-        for (size_t i = 0; i < _products.size(); ++i)
-        {
-            if (_products[i].name == fuel.name)
-            {
-                double power_per_unit_per_min =
-                    (fuel.power * fuel.duration) / 60.0;
-                double needed_qty = total_needed / power_per_unit_per_min;
-                std::cout << "  - if only " << fuel.name << ": " << needed_qty
-                          << " batteries/min" << std::endl;
-                break;
-            }
-        }
-    }
 }

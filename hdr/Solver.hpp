@@ -34,5 +34,6 @@ class Solver
     IloModel _model;
     IloNumVarArray _qty_produced;
     IloArray<IloNumVarArray> _factories_in_area;
+    IloIntVarArray _num_batteries_active;
     IloCplex _cplex;
 };
