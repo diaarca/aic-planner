@@ -53,7 +53,7 @@ void Solver::solve()
 void Solver::instantiateVariables()
 {
     _qty_produced =
-        IloNumVarArray(_env, _products.size(), 0, IloInfinity, ILOFLOAT);
+        IloNumVarArray(_env, _products.size(), 0, IloInfinity, ILOINT);
 
     for (size_t i = 0; i < _products.size(); ++i)
     {
@@ -188,7 +188,8 @@ void Solver::declareConstraints()
                 _factories_in_area[i][j] * _products[i].factory_depot;
 
             // 2D depot usage: sum of depot areas
-            // Assume the depot part of the factory is factory_depot * factory_height
+            // Assume the depot part of the factory is factory_depot *
+            // factory_height
             double factory_depot_area =
                 _products[i].factory_depot * _products[i].factory_height;
             area_depot_2d_used += _factories_in_area[i][j] * factory_depot_area;
@@ -213,7 +214,8 @@ void Solver::declareConstraints()
             // 2D Depot Constraint
             double total_depot_area =
                 _areas[j].pac_depot_width * _areas[j].pac_height;
-            // Actually, if it's both in height and width, it might be pac_depot_width * pac_depot_height
+            // Actually, if it's both in height and width, it might be
+            // pac_depot_width * pac_depot_height
             if (_areas[j].pac_depot_height > 0)
                 total_depot_area =
                     _areas[j].pac_depot_width * _areas[j].pac_depot_height;
@@ -239,14 +241,14 @@ void Solver::declareConstraints()
         if (area.area_facilities.count("zipline") &&
             _facility_power.count("zipline"))
         {
-            power_demand +=
-                area.area_facilities.at("zipline") * _facility_power.at("zipline");
+            power_demand += area.area_facilities.at("zipline") *
+                            _facility_power.at("zipline");
         }
         if (area.area_facilities.count("defense") &&
             _facility_power.count("defense"))
         {
-            power_demand +=
-                area.area_facilities.at("defense") * _facility_power.at("defense");
+            power_demand += area.area_facilities.at("defense") *
+                            _facility_power.at("defense");
         }
     }
 
@@ -277,7 +279,7 @@ void Solver::declareConstraints()
         power_supply += _num_batteries_active[i] * _fuels[i].power;
     }
 
-    _model.add(power_supply >= power_demand);
+    _model.add(power_supply + 200 >= power_demand);
 
     power_demand.end();
     power_supply.end();
@@ -353,8 +355,8 @@ void Solver::displaySolution()
             {
                 double total_depot_area =
                     _areas[j].pac_depot_width * _areas[j].pac_depot_height;
-                std::cout << "  Depot (2D) area used: " << used_depot_2d << " / "
-                          << total_depot_area << std::endl;
+                std::cout << "  Depot (2D) area used: " << used_depot_2d
+                          << " / " << total_depot_area << std::endl;
             }
             else
             {
@@ -430,7 +432,8 @@ void Solver::displaySolution()
     double total_needed = power_ziplines + power_defenses + power_factories;
     std::cout << "Total Power Needed: " << total_needed << std::endl;
 
-    std::cout << "\n--- Power Production (Optimal Battery Mix) ---" << std::endl;
+    std::cout << "\n--- Power Production (Optimal Battery Mix) ---"
+              << std::endl;
     double total_supply = 0;
     for (size_t i = 0; i < _fuels.size(); ++i)
     {
