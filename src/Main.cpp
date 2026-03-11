@@ -3,6 +3,7 @@
 #include "Solver.hpp"
 #include "Fuel.hpp"
 #include "Facility.hpp"
+#include "Region.hpp"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -26,6 +27,7 @@ int main(int argc, char* argv[])
         std::string areas_file = folder_path + "/areas.csv";
         std::string fuels_file = folder_path + "/fuels.csv";
         std::string facilities_file = folder_path + "/facilities.csv";
+        std::string region_file = folder_path + "/region.csv";
         {
             std::ifstream f_test(fuels_file);
             if (!f_test.good())
@@ -38,6 +40,7 @@ int main(int argc, char* argv[])
         auto areas = Area::readCSV(areas_file);
         auto fuels = Fuel::readCSV(fuels_file);
         auto facility_power = Facility::readCSV(facilities_file);
+        auto region = Region::readCSV(region_file);
 
         if (products.empty() || mineral_limits.empty())
         {
@@ -52,7 +55,7 @@ int main(int argc, char* argv[])
         // Area::print_table(areas);
 
         // Create solver and solve the model
-        Solver solver(products, mineral_limits, areas, fuels, facility_power);
+        Solver solver(products, mineral_limits, areas, fuels, facility_power, region);
         solver.solve();
     }
     catch (const std::exception& e)

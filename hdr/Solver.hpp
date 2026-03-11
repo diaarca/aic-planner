@@ -4,6 +4,7 @@
 #include "Fuel.hpp"
 #include "Mineral.hpp"
 #include "Product.hpp"
+#include "Region.hpp"
 #include <ilcplex/ilocplex.h>
 #include <string>
 #include <vector>
@@ -15,7 +16,8 @@ class Solver
            const std::vector<Mineral>& mineral_limits,
            const std::vector<Area>& areas,
            const std::vector<Fuel>& fuels,
-           const std::map<std::string, double>& facility_power);
+           const std::map<std::string, double>& facility_power,
+           const Region& region);
     void solve();
 
   private:
@@ -29,6 +31,7 @@ class Solver
     const std::vector<Area>& _areas;
     const std::vector<Fuel>& _fuels;
     const std::map<std::string, double>& _facility_power;
+    const Region& _region;
 
     IloEnv _env;
     IloModel _model;

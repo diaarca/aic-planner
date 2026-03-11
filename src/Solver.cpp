@@ -6,9 +6,10 @@ Solver::Solver(const std::vector<Product>& products,
                const std::vector<Mineral>& mineral_limits,
                const std::vector<Area>& areas,
                const std::vector<Fuel>& fuels,
-               const std::map<std::string, double>& facility_power)
+               const std::map<std::string, double>& facility_power,
+               const Region& region)
     : _products(products), _mineral_limits(mineral_limits), _areas(areas),
-      _fuels(fuels), _facility_power(facility_power)
+      _fuels(fuels), _facility_power(facility_power), _region(region)
 {
 }
 
@@ -110,6 +111,7 @@ void Solver::declareConstraints()
 
     // Objective: Maximize total net value (sold products)
     IloExpr objective(_env);
+    IloExpr total_net_production_rate(_env);
     for (size_t i = 0; i < _products.size(); ++i)
     {
         IloExpr qty_sold(_env);
@@ -120,12 +122,22 @@ void Solver::declareConstraints()
             qty_sold -= fuel_consumption_per_min[fuel_idx];
         }
         objective += _products[i].value * qty_sold;
+        total_net_production_rate += qty_sold;
         // Non-negative sold quantity
         _model.add(qty_sold >= 0);
         qty_sold.end();
     }
     _model.add(IloMaximize(_env, objective));
+
+    // Storage constraint: total net production rate must not fill storage in
+    // less than 48 hours
+    if (_region.storage > 0)
+    {
+        _model.add(total_net_production_rate <= _region.storage / (24 * 60));
+    }
+
     objective.end();
+    total_net_production_rate.end();
 
     // Mineral limits (Ingredients + Direct Fuel Usage)
     for (size_t m = 0; m < _mineral_limits.size(); ++m)
@@ -279,7 +291,7 @@ void Solver::declareConstraints()
         power_supply += _num_batteries_active[i] * _fuels[i].power;
     }
 
-    _model.add(power_supply + 200 >= power_demand);
+    _model.add(power_supply + _region.base_power >= power_demand);
 
     power_demand.end();
     power_supply.end();
