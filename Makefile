@@ -1,7 +1,6 @@
 CXX = clang++
 
-CPLEX_DIR = /Applications/CPLEX_Studio2211
-ARCH = arm64_osx
+ORTOOLS_DIR = $(HOME)/OR-TOOLS/or-tools_arm64_macOS-15.3.1_cpp_v9.12.4544
 
 SRC_DIR = src
 HDR_DIR = hdr
@@ -12,10 +11,9 @@ TARGET = $(BIN_DIR)/aic_planner
 SRCS = $(wildcard src/*.cpp)
 OBJS = $(SRCS:src/%.cpp=$(OBJ_DIR)/%.o)
 
-
-CXXFLAGS = -I"$(CPLEX_DIR)/cplex/include/" -I"$(CPLEX_DIR)/concert/include/" -I$(HDR_DIR) -std=c++11 -Wno-deprecated-declarations
-LDFLAGS = -L"$(CPLEX_DIR)/cplex/lib/$(ARCH)/static_pic" -L"$(CPLEX_DIR)/concert/lib/$(ARCH)/static_pic"
-LDLIBS = -lilocplex -lconcert -lcplex -lm -lpthread
+CXXFLAGS = -I$(ORTOOLS_DIR)/include -I$(HDR_DIR) -std=c++17 -O3 -DOR_PROTO_DLL=
+LDFLAGS = -L$(ORTOOLS_DIR)/lib -Wl,-rpath,$(ORTOOLS_DIR)/lib
+LDLIBS = -lortools
 
 .PHONY: all clean
 
