@@ -61,7 +61,7 @@ Valley IV for now).
 - $\text{produce}_p$: the quantity of product $p$ to be produced (per minute)
 - $\text{factory}_p^a$: the number of factory for product $p$ to be place in
   area $a$
-- $\text{active}_fu$: the quantity of fuel $fu$ that must be active for
+- $\text{active}_{fu}$: the quantity of fuel $fu$ that must be active for
   providing power
 
 ### Objective
