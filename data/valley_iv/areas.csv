@@ -1,4 +1,4 @@
-area,zipline,defense,mining,pac_depot_width,pac_depot_height,pac_width,pac_height
+area,zipline,defense,mining_rig,pac_depot_width,pac_depot_height,pac_width,pac_height
 hub,20,10,25,70,70,70,70
 valley_pass,10,10,7,40,0,40,40
 aburrey_quarry,10,10,4,0,0,0,0

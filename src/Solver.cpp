@@ -188,6 +188,17 @@ void Solver::declareConstraints()
                                         factory_depot);
             }
         }
+        else
+        {
+            MPConstraint* const c_space = _solver->MakeRowConstraint(0, 0);
+
+            for (size_t i = 0; i < _products.size(); ++i)
+            {
+                double factory_area =
+                    _products[i].factory_width * _products[i].factory_height;
+                c_space->SetCoefficient(_factories_in_area[i][j], factory_area);
+            }
+        }
     }
 
     // Power
@@ -204,10 +215,10 @@ void Solver::declareConstraints()
             _facility_power.count("defense"))
             static_demand += area.area_facilities.at("defense") *
                              _facility_power.at("defense");
-        if (area.area_facilities.count("mining") &&
-            _facility_power.count("mining"))
-            static_demand += area.area_facilities.at("mining") *
-                             _facility_power.at("mining");
+        if (area.area_facilities.count("mining_rig") &&
+            _facility_power.count("mining_rig"))
+            static_demand += area.area_facilities.at("mining_rig") *
+                             _facility_power.at("mining_rig");
         if (static_demand > 0)
             c_power_con->SetBounds(c_power_con->lb(),
                                    c_power_con->ub() - static_demand);
@@ -273,8 +284,7 @@ void Solver::displaySolution()
         {
             std::cout << "Area: " << _areas[j].name << std::endl;
             double used_space = 0;
-            double used_depot_1d = 0;
-            double used_depot_2d = 0;
+            double used_depot = 0;
             for (size_t i = 0; i < _products.size(); ++i)
             {
                 double num_f = _factories_in_area[i][j]->solution_value();
@@ -285,27 +295,16 @@ void Solver::displaySolution()
                               << std::endl;
                     used_space += num_f * (_products[i].factory_width *
                                            _products[i].factory_height);
-                    used_depot_1d += num_f * _products[i].factory_depot;
-                    used_depot_2d += num_f * (_products[i].factory_depot *
-                                              _products[i].factory_height);
+                    used_depot += num_f * _products[i].factory_depot;
                 }
             }
             std::cout << "  Space used: " << used_space << " / "
                       << (_areas[j].pac_width * _areas[j].pac_height)
                       << std::endl;
-            if (_areas[j].pac_depot_height > 0)
-            {
-                std::cout << "  Depot (2D) area used: " << used_depot_2d
-                          << " / "
-                          << (_areas[j].pac_depot_width *
-                              _areas[j].pac_depot_height)
-                          << std::endl;
-            }
-            else
-            {
-                std::cout << "  Depot (1D) length used: " << used_depot_1d
-                          << " / " << _areas[j].pac_depot_width << std::endl;
-            }
+
+            std::cout << "  Depot length used: " << used_depot << " / "
+                      << _areas[j].pac_depot_width + _areas[j].pac_depot_height
+                      << std::endl;
         }
     }
 
@@ -331,7 +330,7 @@ void Solver::displaySolution()
     }
 
     std::cout << "\n--- Power Consumption ---" << std::endl;
-    double p_zip = 0, p_def = 0, p_fact = 0;
+    double p_zip = 0, p_def = 0, p_mine = 0, p_fact = 0;
     for (const auto& area : _areas)
     {
         if (area.area_facilities.count("zipline") &&
@@ -342,6 +341,10 @@ void Solver::displaySolution()
             _facility_power.count("defense"))
             p_def += area.area_facilities.at("defense") *
                      _facility_power.at("defense");
+        if (area.area_facilities.count("mining_rig") &&
+            _facility_power.count("mining_rig"))
+            p_mine += area.area_facilities.at("mining_rig") *
+                      _facility_power.at("mining_rig");
     }
     for (size_t i = 0; i < _products.size(); ++i)
     {
@@ -354,6 +357,7 @@ void Solver::displaySolution()
     }
     std::cout << "Power for Ziplines: " << p_zip
               << "\nPower for Defenses: " << p_def
+              << "\nPower for Mining Rigs: " << p_mine
               << "\nPower for Factories: " << p_fact << std::endl;
     std::cout << "Total Power Needed: " << (p_zip + p_def + p_fact)
               << std::endl;
