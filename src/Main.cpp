@@ -1,9 +1,9 @@
-#include "Area.hpp"
-#include "Mineral.hpp"
-#include "Solver.hpp"
-#include "Fuel.hpp"
-#include "Facility.hpp"
-#include "Region.hpp"
+#include "area.hpp"
+#include "mineral.hpp"
+#include "solver.hpp"
+#include "fuel.hpp"
+#include "facility.hpp"
+#include "region.hpp"
 #include <fstream>
 #include <iostream>
 #include <sstream>

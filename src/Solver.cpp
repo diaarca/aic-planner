@@ -1,4 +1,4 @@
-#include "Solver.hpp"
+#include "solver.hpp"
 #include <iostream>
 
 using namespace operations_research;

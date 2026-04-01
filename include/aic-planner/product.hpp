@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Mineral.hpp"
+#include "csv_reader.hpp"
+#include "mineral.hpp"
 #include <map>
 #include <string>
 #include <vector>
-#include "CSVReader.hpp"
 
 // Data structure for a product
 struct Product
@@ -20,8 +20,9 @@ struct Product
     double factory_depot;
     std::map<std::string, double> factory_facilities;
 
-    static std::vector<Product> readCSV(const std::string& filename,
-                                       const std::vector<Mineral>& mineral_limits);
+    static std::vector<Product>
+    readCSV(const std::string& filename,
+            const std::vector<Mineral>& mineral_limits);
     static void print_table(const std::vector<Product>& products,
                             const std::vector<Mineral>& mineral_limits);
 };

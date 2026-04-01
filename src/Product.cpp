@@ -1,4 +1,4 @@
-#include "Product.hpp"
+#include "product.hpp"
 #include <algorithm>
 #include <fstream>
 #include <iomanip>

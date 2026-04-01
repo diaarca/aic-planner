@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Area.hpp"
-#include "Fuel.hpp"
-#include "Mineral.hpp"
-#include "Product.hpp"
-#include "Region.hpp"
+#include "area.hpp"
+#include "fuel.hpp"
+#include "mineral.hpp"
+#include "product.hpp"
+#include "region.hpp"
 #include "ortools/linear_solver/linear_solver.h"
 #include <memory>
 #include <string>

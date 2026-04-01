@@ -2,13 +2,13 @@
 
 #include <string>
 #include <vector>
-#include "CSVReader.hpp"
+#include "csv_reader.hpp"
 
-struct Battery
+struct Fuel
 {
     std::string name;
     double power;
     double duration;
 
-    static std::vector<Battery> readCSV(const std::string& filename);
+    static std::vector<Fuel> readCSV(const std::string& filename);
 };

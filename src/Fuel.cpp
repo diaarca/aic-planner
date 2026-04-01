@@ -1,4 +1,4 @@
-#include "Fuel.hpp"
+#include "fuel.hpp"
 #include <fstream>
 
 std::vector<Fuel> Fuel::readCSV(const std::string& filename)

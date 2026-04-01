@@ -1,4 +1,4 @@
-#include "Facility.hpp"
+#include "facility.hpp"
 #include <fstream>
 
 std::map<std::string, double> Facility::readCSV(const std::string& filename)

@@ -1,8 +1,8 @@
-#include "Region.hpp"
+#include "region.hpp"
+#include "csv_reader.hpp"
 #include <fstream>
 #include <iostream>
 #include <vector>
-#include "CSVReader.hpp"
 
 Region Region::readCSV(const std::string& filename)
 {
