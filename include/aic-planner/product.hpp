@@ -17,5 +17,7 @@ struct Product
     double factory_depot;
     std::map<std::string, double> factory_facilities;
 
-    static std::vector<Product> readCSV(const std::string& filename, const std::vector<Mineral>& mineral_limits);
+    static std::vector<Product>
+    readCSV(const std::string& filename,
+            const std::vector<Mineral>& mineral_limits);
 };

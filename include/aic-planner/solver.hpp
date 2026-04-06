@@ -6,6 +6,7 @@
 #include "ortools/linear_solver/linear_solver.h"
 #include "product.hpp"
 #include "region.hpp"
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
