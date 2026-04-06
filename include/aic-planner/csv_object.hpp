@@ -5,6 +5,7 @@
 #include <iostream>
 #include <map>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -16,11 +17,17 @@ class CSVObject
     // Returns the title of the table for this object type
     virtual std::string get_title() const = 0;
 
-    // Returns the headers for the CSV columns
+    // Returns the headers for display
     virtual std::vector<std::string> get_headers() const = 0;
 
-    // Returns the values for the CSV columns as strings
+    // Returns the values for display
     virtual std::vector<std::string> get_values() const = 0;
+
+    // Load data from a map of header names to values
+    virtual void load(const std::map<std::string, std::string>& row_data) = 0;
+
+    // Return a unique key for this object (e.g., its name)
+    virtual std::string get_key() const = 0;
 
     // Modular operator<< to print a single instance
     friend std::ostream& operator<<(std::ostream& os, const CSVObject& obj)
@@ -73,6 +80,127 @@ class CSVObject
             }
             os << "\n";
         }
+    }
+
+    // Generic method to read a CSV and return a map of objects
+    template <typename T>
+    static std::map<std::string, T>
+    read_csv_map(const std::string& filename,
+                 const std::vector<std::string>& expected_headers)
+    {
+        auto data = read_file(filename);
+        if (data.empty())
+            return {};
+
+        const auto& file_headers = data[0];
+
+        // Strict header check as requested
+        if (file_headers.size() != expected_headers.size())
+        {
+            throw std::runtime_error(
+                "Header count mismatch in " + filename + ". Expected " +
+                std::to_string(expected_headers.size()) + ", found " +
+                std::to_string(file_headers.size()));
+        }
+
+        std::map<std::string, int> header_to_idx;
+        for (int i = 0; i < (int)file_headers.size(); ++i)
+        {
+            header_to_idx[file_headers[i]] = i;
+        }
+
+        for (const auto& expected : expected_headers)
+        {
+            if (header_to_idx.find(expected) == header_to_idx.end())
+            {
+                throw std::runtime_error("Missing required header '" +
+                                         expected + "' in " + filename);
+            }
+        }
+
+        std::map<std::string, T> results;
+        for (size_t i = 1; i < data.size(); ++i)
+        {
+            const auto& row = data[i];
+            if (row.size() != file_headers.size())
+                continue;
+
+            std::map<std::string, std::string> row_map;
+            for (size_t j = 0; j < file_headers.size(); ++j)
+            {
+                row_map[file_headers[j]] = row[j];
+            }
+
+            T obj;
+            obj.load(row_map);
+            results[obj.get_key()] = obj;
+        }
+        return results;
+    }
+
+    // Generic method to read a CSV and return a vector of objects
+    template <typename T>
+    static std::vector<T>
+    read_csv_vector(const std::string& filename,
+                    const std::vector<std::string>& expected_headers)
+    {
+        auto data = read_file(filename);
+        if (data.empty())
+            return {};
+
+        const auto& file_headers = data[0];
+
+        if (file_headers.size() != expected_headers.size())
+        {
+            throw std::runtime_error("Header count mismatch in " + filename);
+        }
+
+        std::map<std::string, int> header_to_idx;
+        for (int i = 0; i < (int)file_headers.size(); ++i)
+        {
+            header_to_idx[file_headers[i]] = i;
+        }
+
+        for (const auto& expected : expected_headers)
+        {
+            if (header_to_idx.find(expected) == header_to_idx.end())
+            {
+                throw std::runtime_error("Missing required header '" +
+                                         expected + "' in " + filename);
+            }
+        }
+
+        std::vector<T> results;
+        for (size_t i = 1; i < data.size(); ++i)
+        {
+            const auto& row = data[i];
+            if (row.size() != file_headers.size())
+                continue;
+
+            std::map<std::string, std::string> row_map;
+            for (size_t j = 0; j < file_headers.size(); ++j)
+            {
+                row_map[file_headers[j]] = row[j];
+            }
+
+            T obj;
+            obj.load(row_map);
+            results.push_back(obj);
+        }
+        return results;
+    }
+
+    // Helper to get headers directly from a file
+    static std::vector<std::string>
+    get_file_headers(const std::string& filename)
+    {
+        std::ifstream file(filename);
+        std::string line;
+        if (std::getline(file, line))
+        {
+            return parse_line(line);
+        }
+        return {};
     }
 
     // Static helper to read lines from a CSV file

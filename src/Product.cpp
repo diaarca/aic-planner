@@ -8,89 +8,75 @@ std::vector<Product>
 Product::readCSV(const std::string& filename,
                  const std::vector<Mineral>& mineral_limits)
 {
-    std::vector<Product> products;
-    auto data = CSVObject::read_file(filename);
-    if (data.empty())
-        return products;
-
-    std::vector<std::string> header = data[0];
-
-    int name_idx = -1, value_idx = -1, time_idx = -1, depot_idx = -1,
-        width_idx = -1, height_idx = -1;
-    std::vector<std::pair<std::string, int>> mineral_indices;
-    std::vector<std::pair<std::string, int>> facility_indices;
-
-    for (int i = 0; i < (int)header.size(); ++i)
+    auto headers = CSVObject::get_file_headers(filename);
+    if (headers.empty()) return {};
+    auto products = CSVObject::read_csv_vector<Product>(filename, headers);
+    for (auto& p : products)
     {
-        if (header[i] == "product" || header[i] == "Item_Name")
-            name_idx = i;
-        else if (header[i] == "value" || header[i] == "Trading_Value")
-            value_idx = i;
-        else if (header[i] == "time" || header[i] == "Production_Time")
-            time_idx = i;
-        else if (header[i] == "depot")
-            depot_idx = i;
-        else if (header[i] == "width")
-            width_idx = i;
-        else if (header[i] == "height")
-            height_idx = i;
-        else if (std::any_of(mineral_limits.begin(), mineral_limits.end(),
-                             [&](const Mineral& m)
-                             { return m.name == header[i]; }))
-        {
-            mineral_indices.push_back({header[i], i});
-        }
-        else
-        {
-            facility_indices.push_back({header[i], i});
-        }
-    }
-
-    if (name_idx == -1 || value_idx == -1 || time_idx == -1)
-    {
-        return products;
-    }
-
-    for (size_t i = 1; i < data.size(); ++i)
-    {
-        auto row = data[i];
-        if (row.size() != header.size())
-            continue;
-
-        Product p;
-        p.name = row[name_idx];
-        p.value = std::stod(row[value_idx]);
-        p.production_time = std::stod(row[time_idx]);
-        p.factory_depot = (depot_idx != -1) ? std::stod(row[depot_idx]) : 0;
-        p.factory_width = (width_idx != -1) ? std::stod(row[width_idx]) : 0;
-        p.factory_height = (height_idx != -1) ? std::stod(row[height_idx]) : 0;
-
-        for (const auto& m_info : mineral_indices)
-        {
-            p.mineral_consumption[m_info.first] = std::stod(row[m_info.second]);
-        }
-        for (const auto& f_info : facility_indices)
-        {
-            p.factory_facilities[f_info.first] = std::stod(row[f_info.second]);
-        }
-        products.push_back(p);
+        p.categorize_consumption(mineral_limits);
     }
     return products;
 }
 
+void Product::load(const std::map<std::string, std::string>& row_data)
+{
+    // Try both naming conventions
+    if (row_data.count("product")) name = row_data.at("product");
+    else if (row_data.count("Item_Name")) name = row_data.at("Item_Name");
+
+    if (row_data.count("value")) value = std::stod(row_data.at("value"));
+    else if (row_data.count("Trading_Value")) value = std::stod(row_data.at("Trading_Value"));
+
+    if (row_data.count("time")) production_time = std::stod(row_data.at("time"));
+    else if (row_data.count("Production_Time")) production_time = std::stod(row_data.at("Production_Time"));
+
+    factory_depot = row_data.count("depot") ? std::stod(row_data.at("depot")) : 0;
+    factory_width = row_data.count("width") ? std::stod(row_data.at("width")) : 0;
+    factory_height = row_data.count("height") ? std::stod(row_data.at("height")) : 0;
+
+    std::vector<std::string> base_keys = {"product", "Item_Name", "value", "Trading_Value", "time", "Production_Time", "depot", "width", "height"};
+    for (auto const& [key, val] : row_data)
+    {
+        bool is_base = false;
+        for (const auto& bk : base_keys)
+        {
+            if (bk == key) { is_base = true; break; }
+        }
+        if (!is_base)
+        {
+            _all_dynamic[key] = std::stod(val);
+        }
+    }
+}
+
+void Product::categorize_consumption(const std::vector<Mineral>& mineral_limits)
+{
+    mineral_consumption.clear();
+    factory_facilities.clear();
+    for (auto const& [key, val] : _all_dynamic)
+    {
+        bool is_mineral = std::any_of(mineral_limits.begin(), mineral_limits.end(),
+                                     [&](const Mineral& m) { return m.name == key; });
+        if (is_mineral)
+        {
+            mineral_consumption[key] = val;
+        }
+        else
+        {
+            factory_facilities[key] = val;
+        }
+    }
+}
+
 std::vector<std::string> Product::get_headers() const
 {
-    std::vector<std::string> h = {"Product", "Val", "T", "D", "W", "H"};
-    for (auto const& [name, val] : mineral_consumption)
-    {
-        h.push_back(name);
-    }
-    for (auto const& [name, val] : factory_facilities)
-    {
-        h.push_back(name);
-    }
+    // We'll use the CSV headers we found during load (if we have them) or at least the base ones
+    std::vector<std::string> h = {"product", "value", "time", "depot", "width", "height"};
+    for (auto const& [name, val] : mineral_consumption) h.push_back(name);
+    for (auto const& [name, val] : factory_facilities) h.push_back(name);
     return h;
 }
+
 
 std::vector<std::string> Product::get_values() const
 {

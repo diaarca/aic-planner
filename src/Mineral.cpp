@@ -5,25 +5,20 @@
 
 std::vector<Mineral> Mineral::readCSV(const std::string& filename)
 {
-    std::vector<Mineral> minerals;
-    auto data = CSVObject::read_file(filename);
-    if (data.empty())
-        return minerals;
+    return CSVObject::read_csv_vector<Mineral>(filename, {"mineral", "limit"});
+}
 
-    for (size_t i = 1; i < data.size(); ++i)
-    {
-        if (data[i].size() >= 2)
-        {
-            minerals.push_back({data[i][0], std::stod(data[i][1])});
-        }
-    }
-    return minerals;
+void Mineral::load(const std::map<std::string, std::string>& row_data)
+{
+    name = row_data.at("mineral");
+    limit = std::stod(row_data.at("limit"));
 }
 
 std::vector<std::string> Mineral::get_headers() const
 {
-    return {"Mineral", "Limit"};
+    return {"mineral", "limit"};
 }
+
 
 std::vector<std::string> Mineral::get_values() const
 {

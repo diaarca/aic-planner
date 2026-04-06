@@ -3,29 +3,21 @@
 
 std::vector<Fuel> Fuel::readCSV(const std::string& filename)
 {
-    std::vector<Fuel> fuels;
-    auto data = CSVObject::read_file(filename);
-    if (data.empty())
-        return fuels;
+    return CSVObject::read_csv_vector<Fuel>(filename, {"fuel", "power", "duration"});
+}
 
-    for (size_t i = 1; i < data.size(); ++i)
-    {
-        if (data[i].size() >= 3)
-        {
-            Fuel f;
-            f.name = data[i][0];
-            f.power = std::stod(data[i][1]);
-            f.duration = std::stod(data[i][2]);
-            fuels.push_back(f);
-        }
-    }
-    return fuels;
+void Fuel::load(const std::map<std::string, std::string>& row_data)
+{
+    name = row_data.at("fuel");
+    power = std::stod(row_data.at("power"));
+    duration = std::stod(row_data.at("duration"));
 }
 
 std::vector<std::string> Fuel::get_headers() const
 {
-    return {"Fuel", "Power", "Duration"};
+    return {"fuel", "power", "duration"};
 }
+
 
 std::vector<std::string> Fuel::get_values() const
 {

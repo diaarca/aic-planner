@@ -19,4 +19,6 @@ struct Fuel : public CSVObject
     std::string get_title() const override { return "Fuels"; }
     std::vector<std::string> get_headers() const override;
     std::vector<std::string> get_values() const override;
+    void load(const std::map<std::string, std::string>& row_data) override;
+    std::string get_key() const override { return name; }
 };

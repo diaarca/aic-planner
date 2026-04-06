@@ -25,9 +25,21 @@ Region Region::readCSV(const std::string& filename)
     return region;
 }
 
+void Region::load(const std::map<std::string, std::string>& row_data)
+{
+    if (row_data.count("base_power"))
+    {
+        base_power = std::stod(row_data.at("base_power"));
+    }
+    if (row_data.count("storage"))
+    {
+        storage = std::stod(row_data.at("storage"));
+    }
+}
+
 std::vector<std::string> Region::get_headers() const
 {
-    return {"Base Power", "Storage"};
+    return {"base_power", "storage"};
 }
 
 std::vector<std::string> Region::get_values() const

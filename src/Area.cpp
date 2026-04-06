@@ -5,77 +5,45 @@
 
 std::vector<Area> Area::readCSV(const std::string& filename)
 {
-    std::vector<Area> areas;
-    auto data = CSVObject::read_file(filename);
-    if (data.empty())
-        return areas;
+    auto headers = CSVObject::get_file_headers(filename);
+    if (headers.empty())
+        return {};
+    return CSVObject::read_csv_vector<Area>(filename, headers);
+}
 
-    std::vector<std::string> header = data[0];
-    int name_idx = -1, width_idx = -1, height_idx = -1, depot_w_idx = -1,
-        depot_h_idx = -1;
-    std::vector<std::pair<std::string, int>> facility_indices;
+void Area::load(const std::map<std::string, std::string>& row_data)
+{
+    name = row_data.at("area");
+    pac_width = std::stod(row_data.at("pac_width"));
+    pac_height = std::stod(row_data.at("pac_height"));
+    pac_depot_width = std::stod(row_data.at("pac_depot_width"));
+    pac_depot_height = std::stod(row_data.at("pac_depot_height"));
 
-    for (int i = 0; i < (int)header.size(); ++i)
+    std::vector<std::string> base_keys = {"area", "pac_width", "pac_height",
+                                          "pac_depot_width",
+                                          "pac_depot_height"};
+    for (auto const& [key, val] : row_data)
     {
-        if (header[i] == "area")
+        bool is_base = false;
+        for (const auto& bk : base_keys)
         {
-            name_idx = i;
+            if (bk == key)
+            {
+                is_base = true;
+                break;
+            }
         }
-        else if (header[i] == "pac_width")
+        if (!is_base)
         {
-            width_idx = i;
-        }
-        else if (header[i] == "pac_height")
-        {
-            height_idx = i;
-        }
-        else if (header[i] == "pac_depot_width")
-        {
-            depot_w_idx = i;
-        }
-        else if (header[i] == "pac_depot_height")
-        {
-            depot_h_idx = i;
-        }
-        else
-        {
-            facility_indices.push_back({header[i], i});
+            area_facilities[key] = std::stod(val);
         }
     }
-
-    if (name_idx == -1 || width_idx == -1 || height_idx == -1 ||
-        depot_w_idx == -1 || depot_h_idx == -1)
-    {
-        return areas;
-    }
-
-    for (size_t i = 1; i < data.size(); ++i)
-    {
-        auto row = data[i];
-        if (row.size() != header.size())
-        {
-            continue;
-        }
-
-        Area a;
-        a.name = row[name_idx];
-        a.pac_width = std::stod(row[width_idx]);
-        a.pac_height = std::stod(row[height_idx]);
-        a.pac_depot_width = std::stod(row[depot_w_idx]);
-        a.pac_depot_height = std::stod(row[depot_h_idx]);
-
-        for (const auto& f_info : facility_indices)
-        {
-            a.area_facilities[f_info.first] = std::stod(row[f_info.second]);
-        }
-        areas.push_back(a);
-    }
-    return areas;
 }
 
 std::vector<std::string> Area::get_headers() const
 {
-    std::vector<std::string> h = {"Area", "W", "H", "DW", "DH"};
+    std::vector<std::string> h = {"area", "pac_width", "pac_height",
+                                  "pac_depot_width", "pac_depot_height"};
     for (auto const& [name, val] : area_facilities)
     {
         h.push_back(name);

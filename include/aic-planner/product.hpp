@@ -28,4 +28,12 @@ struct Product : public CSVObject
     std::string get_title() const override { return "Products"; }
     std::vector<std::string> get_headers() const override;
     std::vector<std::string> get_values() const override;
+    void load(const std::map<std::string, std::string>& row_data) override;
+    std::string get_key() const override { return name; }
+
+    // Categorize consumption fields into minerals and facilities
+    void categorize_consumption(const std::vector<Mineral>& mineral_limits);
+
+  private:
+    std::map<std::string, double> _all_dynamic;
 };
