@@ -10,7 +10,9 @@ TARGET = $(BIN_DIR)/aic_planner
 SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 OBJS = $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
 
-CXXFLAGS = -I$(INCLUDE_DIR) -std=c++17 -O3 -DOR_PROTO_DLL= -I$(ORTOOLS_DIR)/include
+# ORTOOLS_DIR and CSV_PARSER_DIR are defined in the flake.nix
+CXXFLAGS = -I$(INCLUDE_DIR) -std=c++17 -O3 -DOR_PROTO_DLL= \
+		   -I$(ORTOOLS_DIR)/include -I$(CSV_PARSER_DIR)/include
 LDFLAGS += -L$(ORTOOLS_DIR)/lib -Wl,-rpath,$(ORTOOLS_DIR)/lib
 LDLIBS = -lortools
 

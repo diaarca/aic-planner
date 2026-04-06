@@ -49,12 +49,6 @@ int main(int argc, char* argv[])
             return 1;
         }
 
-        // --- Toggle Display of Input Data Tables ---
-        // CSVObject::print_table(mineral_limits);
-        // CSVObject::print_table(products);
-        // CSVObject::print_table(areas);
-        // CSVObject::print_table(fuels);
-
         // Create solver and solve the model
         Solver solver(products, mineral_limits, areas, fuels, facility_power,
                       region);

@@ -26,11 +26,13 @@
             gnumake
             clang
             bear
+            fast-cpp-csv-parser
           ];
 
           shellHook = ''
             export ORTOOLS_DIR=${pkgs.or-tools}
-            echo "EndField Factory dev shell loaded with or-tools"
+            export CSV_PARSER_DIR=${pkgs.fast-cpp-csv-parser}
+            echo "EndField Factory dev shell loaded with or-tools and fast-cpp-csv-parser"
           '';
         };
       }

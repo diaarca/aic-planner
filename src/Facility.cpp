@@ -1,30 +1,25 @@
 #include "facility.hpp"
+#include <csv.h>
 #include <iostream>
 
 std::map<std::string, double> Facility::readCSV(const std::string& filename)
 {
-    auto f_map = CSVObject::read_csv_map<Facility>(filename, {"facility", "power"});
     std::map<std::string, double> results;
-    for (auto const& [name, f] : f_map)
+    try
     {
-        results[name] = f.power;
+        io::CSVReader<2> in(filename);
+        in.read_header(io::ignore_extra_column, "facility", "power");
+        std::string name;
+        double power;
+        while (in.read_row(name, power))
+        {
+            results[name] = power;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Error reading facilities from " << filename << ": "
+                  << e.what() << std::endl;
     }
     return results;
-}
-
-void Facility::load(const std::map<std::string, std::string>& row_data)
-{
-    name = row_data.at("facility");
-    power = std::stod(row_data.at("power"));
-}
-
-std::vector<std::string> Facility::get_headers() const
-{
-    return {"facility", "power"};
-}
-
-
-std::vector<std::string> Facility::get_values() const
-{
-    return {name, std::to_string(power)};
 }

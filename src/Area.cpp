@@ -1,64 +1,40 @@
 #include "area.hpp"
-#include <fstream>
-#include <iomanip>
+#include <csv.h>
 #include <iostream>
 
 std::vector<Area> Area::readCSV(const std::string& filename)
 {
-    auto headers = CSVObject::get_file_headers(filename);
-    if (headers.empty())
-        return {};
-    return CSVObject::read_csv_vector<Area>(filename, headers);
-}
-
-void Area::load(const std::map<std::string, std::string>& row_data)
-{
-    name = row_data.at("area");
-    pac_width = std::stod(row_data.at("pac_width"));
-    pac_height = std::stod(row_data.at("pac_height"));
-    pac_depot_width = std::stod(row_data.at("pac_depot_width"));
-    pac_depot_height = std::stod(row_data.at("pac_depot_height"));
-
-    std::vector<std::string> base_keys = {"area", "pac_width", "pac_height",
-                                          "pac_depot_width",
-                                          "pac_depot_height"};
-    for (auto const& [key, val] : row_data)
+    std::vector<Area> areas;
+    try
     {
-        bool is_base = false;
-        for (const auto& bk : base_keys)
+        io::CSVReader<8> in(filename);
+        in.read_header(io::ignore_extra_column, "area", "zipline", "defense",
+                       "mining_rig", "pac_depot_width", "pac_depot_height",
+                       "pac_width", "pac_height");
+
+        std::string name;
+        double zipline, defense, mining_rig, pac_depot_width, pac_depot_height,
+            pac_width, pac_height;
+
+        while (in.read_row(name, zipline, defense, mining_rig, pac_depot_width,
+                           pac_depot_height, pac_width, pac_height))
         {
-            if (bk == key)
-            {
-                is_base = true;
-                break;
-            }
-        }
-        if (!is_base)
-        {
-            area_facilities[key] = std::stod(val);
+            Area area;
+            area.name = name;
+            area.pac_width = pac_width;
+            area.pac_height = pac_height;
+            area.pac_depot_width = pac_depot_width;
+            area.pac_depot_height = pac_depot_height;
+            area.area_facilities["zipline"] = zipline;
+            area.area_facilities["defense"] = defense;
+            area.area_facilities["mining_rig"] = mining_rig;
+            areas.push_back(area);
         }
     }
-}
-
-std::vector<std::string> Area::get_headers() const
-{
-    std::vector<std::string> h = {"area", "pac_width", "pac_height",
-                                  "pac_depot_width", "pac_depot_height"};
-    for (auto const& [name, val] : area_facilities)
+    catch (const std::exception& e)
     {
-        h.push_back(name);
+        std::cerr << "Error reading areas from " << filename << ": " << e.what()
+                  << std::endl;
     }
-    return h;
-}
-
-std::vector<std::string> Area::get_values() const
-{
-    std::vector<std::string> v = {
-        name, std::to_string(pac_width), std::to_string(pac_height),
-        std::to_string(pac_depot_width), std::to_string(pac_depot_height)};
-    for (auto const& [name, val] : area_facilities)
-    {
-        v.push_back(std::to_string(val));
-    }
-    return v;
+    return areas;
 }
