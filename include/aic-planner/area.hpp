@@ -1,9 +1,9 @@
 #pragma once
 
-#include <string>
+#include <iostream>
 #include <map>
+#include <string>
 #include <vector>
-#include "CSVReader.hpp"
 
 struct Area
 {
@@ -15,5 +15,7 @@ struct Area
     std::map<std::string, double> area_facilities;
 
     static std::vector<Area> readCSV(const std::string& filename);
+
+    friend std::ostream& operator<<(std::ostream& os, const Area& a);
     static void print_table(const std::vector<Area>& areas);
 };

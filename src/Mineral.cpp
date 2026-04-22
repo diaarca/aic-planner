@@ -1,41 +1,39 @@
-#include "Mineral.hpp"
-#include <fstream>
+#include "mineral.hpp"
+#include <csv.h>
 #include <iomanip>
 #include <iostream>
 
 std::vector<Mineral> Mineral::readCSV(const std::string& filename)
 {
     std::vector<Mineral> minerals;
-    std::ifstream file(filename);
-    if (!file.is_open())
+    io::CSVReader<2> in(filename);
+    in.read_header(io::ignore_extra_column, "mineral", "limit");
+    std::string name;
+    double limit;
+    while (in.read_row(name, limit))
     {
-        return minerals;
-    }
-    std::string line;
-    std::getline(file, line); // Skip header
-
-    while (std::getline(file, line))
-    {
-        auto row = CSVReader::parse_line(line);
-        if (row.size() >= 2)
-        {
-            minerals.push_back({row[0], std::stod(row[1])});
-        }
+        minerals.emplace_back(name, limit);
     }
     return minerals;
 }
 
+std::ostream& operator<<(std::ostream& os, const Mineral& m)
+{
+    os << "Mineral: " << std::left << std::setw(20) << m.name
+       << " | Limit: " << m.limit;
+    return os;
+}
+
 void Mineral::print_table(const std::vector<Mineral>& minerals)
 {
-    if (minerals.empty())
-        return;
-    std::cout << "\n--- Minerals ---\n";
-    std::cout << std::left << std::setw(15) << "Mineral" << " | "
-              << std::setw(8) << "Limit" << "\n";
-    std::cout << std::string(26, '-') << "\n";
-    for (const auto& mineral : minerals)
+    std::cout << "\n--- Minerals Table ---\n";
+    std::cout << std::left << std::setw(20) << "Mineral"
+              << " | " << std::setw(10) << "Limit" << "\n";
+    std::cout << std::string(35, '-') << "\n";
+
+    for (const auto& m : minerals)
     {
-        std::cout << std::left << std::setw(15) << mineral.name << " | "
-                  << std::setw(8) << mineral.limit << "\n";
+        std::cout << std::left << std::setw(20) << m.name << " | "
+                  << std::setw(10) << m.limit << "\n";
     }
 }

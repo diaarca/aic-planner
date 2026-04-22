@@ -1,21 +1,19 @@
 CXX = clang++
 
-# ORTOOLS_DIR ?= $(HOME)/OR-TOOLS/or-tools_arm64_macOS-15.3.1_cpp_v9.12.4544
-
+BUILD_DIR = build
 SRC_DIR = src
-HDR_DIR = hdr
-OBJ_DIR = obj
-BIN_DIR = bin
+INCLUDE_DIR = include/aic-planner
+OBJ_DIR = $(BUILD_DIR)/obj
+BIN_DIR = $(BUILD_DIR)/bin
 
 TARGET = $(BIN_DIR)/aic_planner
-SRCS = $(wildcard src/*.cpp)
-OBJS = $(SRCS:src/%.cpp=$(OBJ_DIR)/%.o)
+SRCS = $(wildcard $(SRC_DIR)/*.cpp)
+OBJS = $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
 
-CXXFLAGS = -I$(HDR_DIR) -std=c++17 -O3 -DOR_PROTO_DLL=
-ifneq ($(ORTOOLS_DIR),)
-CXXFLAGS += -I$(ORTOOLS_DIR)/include
+# ORTOOLS_DIR and CSV_PARSER_DIR are defined in the flake.nix
+CXXFLAGS = -I$(INCLUDE_DIR) -std=c++17 -O3 -DOR_PROTO_DLL= \
+		   -I$(ORTOOLS_DIR)/include -I$(CSV_PARSER_DIR)/include
 LDFLAGS += -L$(ORTOOLS_DIR)/lib -Wl,-rpath,$(ORTOOLS_DIR)/lib
-endif
 LDLIBS = -lortools
 
 .PHONY: all clean
@@ -26,14 +24,14 @@ all: $(TARGET)
 $(TARGET): $(OBJS) | $(BIN_DIR)
 	$(CXX) $(LDFLAGS) -o $(TARGET) $(OBJS) $(LDLIBS)
 
-# Rule to compile source files into the obj directory
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Rule to create output directories
-$(BIN_DIR) $(OBJ_DIR):
+$(BIN_DIR) $(OBJ_DIR): $(BUILD_DIR)
 	mkdir -p $@
 
-# Rule to clean all build artifacts
+$(BUILD_DIR):
+	mkdir -p $@
+
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR)
+	rm -rf $(BUILD_DIR)
