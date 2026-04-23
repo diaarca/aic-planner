@@ -1,4 +1,4 @@
-# Contributing to AIC factory planner
+# Contributing to AIC Planner
 
 First off, thank you for considering contributing! It's people like you that make the open-source community such a great place to learn, inspire, and create.
 
@@ -10,6 +10,7 @@ First off, thank you for considering contributing! It's people like you that mak
 *   Include a **clear title and description**, as much relevant information as possible, and a **code sample** or an **executable test case** demonstrating the expected behavior that is not occurring.
 
 ### Suggesting Enhancements
+*   **Check the [Roadmap](README.md#roadmap)** to see our current wishlist and planned features.
 *   Open an issue with the tag `enhancement`.
 *   Explain the use case and why this feature would be useful for the project.
 
@@ -51,4 +52,4 @@ To keep the codebase clean and consistent, please follow these rules:
 *   Prefer `std::unique_ptr` and `std::shared_ptr` over raw pointers for ownership.
 
 ## License
-By contributing, you agree that your contributions will be licensed under the project's chosen license (e.g., MIT).
+By contributing, you agree that your contributions are licensed under our [LICENSE](LICENSE) (MIT).

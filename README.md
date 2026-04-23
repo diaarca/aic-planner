@@ -1,4 +1,4 @@
-# EndField Factory: AIC Planner
+# AIC Planner
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -45,8 +45,17 @@ The solver expects a directory containing the following CSV files:
 
 ---
 
+## Roadmap
+
+We are actively working to improve the AIC Planner. Here is our wishlist for future features:
+
+- **Build System Migration** ([#6](https://github.com/diaarca/aic-planner/issues/6)): Transition from `Make` to `CMake` to improve project maintainability and cross-platform compatibility.
+- **Wulling Region Support** ([#7](https://github.com/diaarca/aic-planner/issues/7)): Add full support for the `Wulling` region, including data files and specific in-game logic.
+- **Dynamic Facility Logic** ([#8](https://github.com/diaarca/aic-planner/issues/8)): Shift from blueprint-based data to a facility-logic-based engine. This allows the solver to analyze individual facility attributes (size, recipes, inputs/outputs) to autonomously decide on the most profitable products and optimal placements.
+- **Solution Visualizer** ([#9](https://github.com/diaarca/aic-planner/issues/9)): Create a visual representation of the solver's output to help players build the optimized factory layout in-game.
+
 ## Contributing
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community guidelines.
 
 ## License
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License** - see our [LICENSE](LICENSE) file for details.

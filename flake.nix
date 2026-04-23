@@ -1,5 +1,5 @@
 {
-  description = "Development environment for EndField Factory";
+  description = "Development environment for AIC Planner";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -32,7 +32,7 @@
           shellHook = ''
             export ORTOOLS_DIR=${pkgs.or-tools}
             export CSV_PARSER_DIR=${pkgs.fast-cpp-csv-parser}
-            echo "EndField Factory dev shell loaded with or-tools and fast-cpp-csv-parser"
+            echo "AIC Planner dev shell loaded with or-tools and fast-cpp-csv-parser"
           '';
         };
       }
