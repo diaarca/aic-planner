@@ -39,7 +39,7 @@ The solver expects a directory containing the following CSV files:
 - `minerals.csv`: Resource limits.
 - `products.csv`: Manufacturing recipes and values.
 - `areas.csv`: Available space and static facilities.
-- `fuels.csv` (or `batteries.csv`): Power generation data.
+- `fuels.csv`: Power generation data.
 - `facilities.csv`: Power consumption per facility type.
 - `region.csv`: Global base power and storage capacity.
 
