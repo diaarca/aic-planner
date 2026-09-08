@@ -18,14 +18,25 @@ int main(int argc, char* argv[])
         std::cerr << "Usage: " << argv[0] << " <data_folder_path>" << std::endl;
         return 1;
     }
-    std::string folder_path = argv[1];
+    std::string folder_path = "";
     bool force_csv = false;
     for (int i = 1; i < argc; ++i)
     {
-        if (std::string(argv[i]) == "--csv")
+        std::string arg = argv[i];
+        if (arg == "--csv")
         {
             force_csv = true;
         }
+        else if (folder_path.empty())
+        {
+            folder_path = arg;
+        }
+    }
+
+    if (folder_path.empty())
+    {
+        std::cerr << "Usage: " << argv[0] << " [--csv] <data_folder_path>" << std::endl;
+        return 1;
     }
 
     try

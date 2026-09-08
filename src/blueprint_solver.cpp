@@ -894,307 +894,398 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
     params.set_max_time_in_seconds(10.0);
     params.set_num_search_workers(8);
 
-    Model cp_model;
-    cp_model.Add(NewSatParameters(params));
-    CpSolverResponse response = SolveCpModel(model.Build(), &cp_model);
+    const int max_conveyor_attempts = 50;
 
-    if (response.status() != CpSolverStatus::OPTIMAL &&
-        response.status() != CpSolverStatus::FEASIBLE)
+    for (int attempt = 1; attempt <= max_conveyor_attempts; ++attempt)
     {
-        return false;
-    }
+        Model cp_model;
+        cp_model.Add(NewSatParameters(params));
+        CpSolverResponse response = SolveCpModel(model.Build(), &cp_model);
 
-    product.factory_width = SolutionIntegerValue(response, bbox_w);
-    product.factory_height = SolutionIntegerValue(response, bbox_h);
-    product.factory_depot = total_unloaders * 3;
-
-    layout.product_name = product.name;
-    layout.bounding_width = static_cast<int>(product.factory_width);
-    layout.bounding_height = static_cast<int>(product.factory_height);
-    layout.depot_length = static_cast<int>(product.factory_depot);
-    layout.entities.clear();
-
-    std::map<std::string, int> type_instance_count;
-    for (int i = 0; i < N; ++i)
-    {
-        PlacedBlueprintEntity pe;
-        pe.name = entities[i].name;
-        pe.type = entities[i].type;
-        pe.x = SolutionIntegerValue(response, posX[i]);
-        pe.y = SolutionIntegerValue(response, posY[i]);
-        pe.width = SolutionIntegerValue(response, effW[i]);
-        pe.height = SolutionIntegerValue(response, effH[i]);
-        pe.is_unloader = entities[i].is_unloader;
-        pe.mineral = entities[i].item_produced;
-
-        int inst_idx = type_instance_count[pe.type]++;
-        pe.code = getFacilityCode(pe.type, inst_idx);
-        pe.color_code = getFacilityColor(pe.type);
-
-        int rot = 0;
-        for (int r = 0; r < 4; ++r)
+        if (response.status() != CpSolverStatus::OPTIMAL &&
+            response.status() != CpSolverStatus::FEASIBLE)
         {
-            if (SolutionBooleanValue(response, rotB[i][r]))
+            std::cerr << "[INFO] No more placements available in CP-SAT for "
+                      << product.name << " after attempt " << (attempt - 1)
+                      << std::endl;
+            return false;
+        }
+
+        layout.entities.clear();
+        std::map<std::string, int> type_instance_count;
+        for (int i = 0; i < N; ++i)
+        {
+            PlacedBlueprintEntity pe;
+            pe.name = entities[i].name;
+            pe.type = entities[i].type;
+            pe.x = SolutionIntegerValue(response, posX[i]);
+            pe.y = SolutionIntegerValue(response, posY[i]);
+            pe.width = SolutionIntegerValue(response, effW[i]);
+            pe.height = SolutionIntegerValue(response, effH[i]);
+            pe.is_unloader = entities[i].is_unloader;
+            pe.mineral = entities[i].item_produced;
+
+            int inst_idx = type_instance_count[pe.type]++;
+            pe.code = getFacilityCode(pe.type, inst_idx);
+            pe.color_code = getFacilityColor(pe.type);
+
+            int rot = 0;
+            for (int r = 0; r < 4; ++r)
             {
-                rot = r * 90;
-                break;
+                if (SolutionBooleanValue(response, rotB[i][r]))
+                {
+                    rot = r * 90;
+                    break;
+                }
+            }
+            pe.rotation = rot;
+
+            int bw = entities[i].base_w;
+            int bh = entities[i].base_h;
+            auto add_placed_port = [&](const Port& p, bool is_in)
+            {
+                int px = 0, py = 0, fx = 0, fy = 0;
+                if (rot == 0)
+                {
+                    px = p.x;
+                    py = p.y;
+                    fx = p.fx;
+                    fy = p.fy;
+                }
+                else if (rot == 90)
+                {
+                    px = p.y;
+                    py = bw - 1 - p.x;
+                    fx = p.fy;
+                    fy = -p.fx;
+                }
+                else if (rot == 180)
+                {
+                    px = bw - 1 - p.x;
+                    py = bh - 1 - p.y;
+                    fx = -p.fx;
+                    fy = -p.fy;
+                }
+                else if (rot == 270)
+                {
+                    px = bh - 1 - p.y;
+                    py = p.x;
+                    fx = -p.fy;
+                    fy = p.fx;
+                }
+                pe.ports.push_back(
+                    {pe.x + px, pe.y + py, is_in, fx, fy, p.type});
+            };
+
+            for (const auto& in_p : entities[i].inputs)
+                add_placed_port(in_p, true);
+            for (const auto& out_p : entities[i].outputs)
+                add_placed_port(out_p, false);
+
+            layout.entities.push_back(pe);
+        }
+
+        // -------------------------------------------------------------
+        // Conveyor Routing & Feasibility Check
+        // -------------------------------------------------------------
+        layout.conveyor_cells.clear();
+        layout.conveyor_items.clear();
+        layout.is_conveyor_feasible = true;
+
+        std::set<std::pair<int, int>> facility_cells;
+        for (const auto& pe : layout.entities)
+        {
+            for (int dy = 0; dy < pe.height; ++dy)
+            {
+                for (int dx = 0; dx < pe.width; ++dx)
+                {
+                    facility_cells.insert({pe.x + dx, pe.y + dy});
+                }
             }
         }
-        pe.rotation = rot;
 
-        int bw = entities[i].base_w;
-        int bh = entities[i].base_h;
-        auto add_placed_port = [&](const Port& p, bool is_in)
+        auto get_dir_mask = [](int dx, int dy) -> int
         {
-            int px = 0, py = 0, fx = 0, fy = 0;
-            if (rot == 0)
-            {
-                px = p.x;
-                py = p.y;
-                fx = p.fx;
-                fy = p.fy;
-            }
-            else if (rot == 90)
-            {
-                px = p.y;
-                py = bw - 1 - p.x;
-                fx = p.fy;
-                fy = -p.fx;
-            }
-            else if (rot == 180)
-            {
-                px = bw - 1 - p.x;
-                py = bh - 1 - p.y;
-                fx = -p.fx;
-                fy = -p.fy;
-            }
-            else if (rot == 270)
-            {
-                px = bh - 1 - p.y;
-                py = p.x;
-                fx = -p.fy;
-                fy = p.fx;
-            }
-            pe.ports.push_back({pe.x + px, pe.y + py, is_in, fx, fy, p.type});
+            if (dy == 1)
+                return CONV_NORTH;
+            if (dy == -1)
+                return CONV_SOUTH;
+            if (dx == 1)
+                return CONV_EAST;
+            if (dx == -1)
+                return CONV_WEST;
+            return 0;
         };
 
-        for (const auto& in_p : entities[i].inputs)
-            add_placed_port(in_p, true);
-        for (const auto& out_p : entities[i].outputs)
-            add_placed_port(out_p, false);
+        std::vector<int> failed_stream_indices;
 
-        layout.entities.push_back(pe);
-    }
-
-    // -------------------------------------------------------------
-    // Conveyor Routing & Feasibility Check
-    // -------------------------------------------------------------
-    layout.conveyor_cells.clear();
-    layout.conveyor_items.clear();
-    layout.is_conveyor_feasible = true;
-
-    std::set<std::pair<int, int>> facility_cells;
-    for (const auto& pe : layout.entities)
-    {
-        for (int dy = 0; dy < pe.height; ++dy)
+        for (size_t s_idx = 0; s_idx < streams.size(); ++s_idx)
         {
-            for (int dx = 0; dx < pe.width; ++dx)
+            const auto& s = streams[s_idx];
+            if (s.src_entity >= static_cast<int>(layout.entities.size()) ||
+                s.dst_entity >= static_cast<int>(layout.entities.size()))
             {
-                facility_cells.insert({pe.x + dx, pe.y + dy});
-            }
-        }
-    }
-
-    auto get_dir_mask = [](int dx, int dy) -> int
-    {
-        if (dy == 1) return CONV_NORTH;
-        if (dy == -1) return CONV_SOUTH;
-        if (dx == 1) return CONV_EAST;
-        if (dx == -1) return CONV_WEST;
-        return 0;
-    };
-
-    for (const auto& s : streams)
-    {
-        if (s.src_entity >= static_cast<int>(layout.entities.size()) ||
-            s.dst_entity >= static_cast<int>(layout.entities.size()))
-        {
-            continue;
-        }
-
-        const auto& pe_src = layout.entities[s.src_entity];
-        std::vector<PlacedPort> src_outputs;
-        for (const auto& p : pe_src.ports)
-        {
-            if (!p.is_input) src_outputs.push_back(p);
-        }
-        if (src_outputs.empty()) continue;
-        const auto& src_port = src_outputs[s.src_port_idx % src_outputs.size()];
-
-        const auto& pe_dst = layout.entities[s.dst_entity];
-        std::vector<PlacedPort> dst_inputs;
-        for (const auto& p : pe_dst.ports)
-        {
-            if (p.is_input) dst_inputs.push_back(p);
-        }
-        if (dst_inputs.empty()) continue;
-        const auto& dst_port = dst_inputs[s.dst_port_idx % dst_inputs.size()];
-
-        int src_ax = src_port.x + src_port.fx;
-        int src_ay = src_port.y + src_port.fy;
-        int dst_ax = dst_port.x + dst_port.fx;
-        int dst_ay = dst_port.y + dst_port.fy;
-
-        std::queue<std::pair<int, int>> q;
-        std::map<std::pair<int, int>, std::pair<int, int>> came_from;
-        std::set<std::pair<int, int>> visited;
-
-        std::pair<int, int> start_pt = {src_ax, src_ay};
-        std::pair<int, int> target_pt = {dst_ax, dst_ay};
-
-        q.push(start_pt);
-        visited.insert(start_pt);
-
-        bool found = (start_pt == target_pt);
-        while (!q.empty() && !found)
-        {
-            auto curr = q.front();
-            q.pop();
-
-            if (curr == target_pt)
-            {
-                found = true;
-                break;
+                continue;
             }
 
-            const int dxy[4][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
-            for (int d = 0; d < 4; ++d)
+            const auto& pe_src = layout.entities[s.src_entity];
+            std::vector<PlacedPort> src_outputs;
+            for (const auto& p : pe_src.ports)
             {
-                int nx = curr.first + dxy[d][0];
-                int ny = curr.second + dxy[d][1];
-                std::pair<int, int> next_pt = {nx, ny};
+                if (!p.is_input)
+                    src_outputs.push_back(p);
+            }
+            if (src_outputs.empty())
+                continue;
+            const auto& src_port =
+                src_outputs[s.src_port_idx % src_outputs.size()];
 
-                if (nx < 0 || nx >= grid_w || ny < 0 || ny >= grid_h)
-                    continue;
-                if (facility_cells.count(next_pt))
-                    continue; // No overlap with facilities
-                if (visited.count(next_pt))
-                    continue;
+            const auto& pe_dst = layout.entities[s.dst_entity];
+            std::vector<PlacedPort> dst_inputs;
+            for (const auto& p : pe_dst.ports)
+            {
+                if (p.is_input)
+                    dst_inputs.push_back(p);
+            }
+            if (dst_inputs.empty())
+                continue;
+            const auto& dst_port =
+                dst_inputs[s.dst_port_idx % dst_inputs.size()];
 
-                visited.insert(next_pt);
-                came_from[next_pt] = curr;
-                if (next_pt == target_pt)
+            int src_ax = src_port.x + src_port.fx;
+            int src_ay = src_port.y + src_port.fy;
+            int dst_ax = dst_port.x + dst_port.fx;
+            int dst_ay = dst_port.y + dst_port.fy;
+
+            std::queue<std::pair<int, int>> q;
+            std::map<std::pair<int, int>, std::pair<int, int>> came_from;
+            std::set<std::pair<int, int>> visited;
+
+            std::pair<int, int> start_pt = {src_ax, src_ay};
+            std::pair<int, int> target_pt = {dst_ax, dst_ay};
+
+            q.push(start_pt);
+            visited.insert(start_pt);
+
+            bool found = (start_pt == target_pt);
+            while (!q.empty() && !found)
+            {
+                auto curr = q.front();
+                q.pop();
+
+                if (curr == target_pt)
                 {
                     found = true;
                     break;
                 }
-                q.push(next_pt);
+
+                const int dxy[4][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+                for (int d = 0; d < 4; ++d)
+                {
+                    int nx = curr.first + dxy[d][0];
+                    int ny = curr.second + dxy[d][1];
+                    std::pair<int, int> next_pt = {nx, ny};
+
+                    if (nx < 0 || nx >= grid_w || ny < 0 || ny >= grid_h)
+                        continue;
+                    if (facility_cells.count(next_pt))
+                        continue; // No overlap with facilities
+                    if (visited.count(next_pt))
+                        continue;
+
+                    visited.insert(next_pt);
+                    came_from[next_pt] = curr;
+                    if (next_pt == target_pt)
+                    {
+                        found = true;
+                        break;
+                    }
+                    q.push(next_pt);
+                }
             }
-        }
 
-        if (!found)
-        {
-            layout.is_conveyor_feasible = false;
-            std::cerr << "[WARNING] Conveyor path infeasible for stream: "
-                      << s.item << " from " << pe_src.name << " to "
-                      << pe_dst.name << std::endl;
-            continue;
-        }
-
-        // Reconstruct path
-        std::vector<std::pair<int, int>> path;
-        auto curr = target_pt;
-        while (curr != start_pt)
-        {
-            path.push_back(curr);
-            curr = came_from[curr];
-        }
-        path.push_back(start_pt);
-        std::reverse(path.begin(), path.end());
-
-        // Connect path segments into layout.conveyor_cells
-        for (size_t k = 0; k < path.size(); ++k)
-        {
-            auto pt = path[k];
-            if (k == 0)
+            if (!found)
             {
-                int to_src_dx = -src_port.fx;
-                int to_src_dy = -src_port.fy;
-                layout.conveyor_cells[pt] |= get_dir_mask(to_src_dx, to_src_dy);
-            }
-            else
-            {
-                int prev_dx = path[k - 1].first - pt.first;
-                int prev_dy = path[k - 1].second - pt.second;
-                layout.conveyor_cells[pt] |= get_dir_mask(prev_dx, prev_dy);
+                layout.is_conveyor_feasible = false;
+                failed_stream_indices.push_back(static_cast<int>(s_idx));
+                std::cerr << "[WARNING] Conveyor path infeasible for stream: "
+                          << s.item << " from " << pe_src.name << " to "
+                          << pe_dst.name << std::endl;
+                continue;
             }
 
-            if (k == path.size() - 1)
+            // Reconstruct path
+            std::vector<std::pair<int, int>> path;
+            auto curr = target_pt;
+            while (curr != start_pt)
             {
-                int to_dst_dx = -dst_port.fx;
-                int to_dst_dy = -dst_port.fy;
-                layout.conveyor_cells[pt] |= get_dir_mask(to_dst_dx, to_dst_dy);
+                path.push_back(curr);
+                curr = came_from[curr];
             }
-            else
-            {
-                int next_dx = path[k + 1].first - pt.first;
-                int next_dy = path[k + 1].second - pt.second;
-                layout.conveyor_cells[pt] |= get_dir_mask(next_dx, next_dy);
-            }
+            path.push_back(start_pt);
+            std::reverse(path.begin(), path.end());
 
-            layout.conveyor_items[pt] = s.item;
+            // Connect path segments into layout.conveyor_cells
+            for (size_t k = 0; k < path.size(); ++k)
+            {
+                auto pt = path[k];
+                if (k == 0)
+                {
+                    int to_src_dx = -src_port.fx;
+                    int to_src_dy = -src_port.fy;
+                    layout.conveyor_cells[pt] |=
+                        get_dir_mask(to_src_dx, to_src_dy);
+                }
+                else
+                {
+                    int prev_dx = path[k - 1].first - pt.first;
+                    int prev_dy = path[k - 1].second - pt.second;
+                    layout.conveyor_cells[pt] |= get_dir_mask(prev_dx, prev_dy);
+                }
+
+                if (k == path.size() - 1)
+                {
+                    int to_dst_dx = -dst_port.fx;
+                    int to_dst_dy = -dst_port.fy;
+                    layout.conveyor_cells[pt] |=
+                        get_dir_mask(to_dst_dx, to_dst_dy);
+                }
+                else
+                {
+                    int next_dx = path[k + 1].first - pt.first;
+                    int next_dy = path[k + 1].second - pt.second;
+                    layout.conveyor_cells[pt] |= get_dir_mask(next_dx, next_dy);
+                }
+
+                layout.conveyor_items[pt] = s.item;
+            }
         }
-    }
 
-    // -------------------------------------------------------------
-    // Coordinate Normalization
-    // -------------------------------------------------------------
-    int min_bx = 9999, max_bx = -9999;
-    int min_by = 9999, max_by = -9999;
-    for (const auto& pe : layout.entities)
-    {
-        min_bx = std::min(min_bx, pe.x);
-        max_bx = std::max(max_bx, pe.x + pe.width - 1);
-        min_by = std::min(min_by, pe.y);
-        max_by = std::max(max_by, pe.y + pe.height - 1);
-    }
-    for (const auto& [cell, mask] : layout.conveyor_cells)
-    {
-        min_bx = std::min(min_bx, cell.first);
-        max_bx = std::max(max_bx, cell.first);
-        min_by = std::min(min_by, cell.second);
-        max_by = std::max(max_by, cell.second);
-    }
-
-    // Shift all coordinates to start at (0, 0)
-    for (auto& pe : layout.entities)
-    {
-        pe.x -= min_bx;
-        pe.y -= min_by;
-        for (auto& p : pe.ports)
+        // Check if all streams are feasible
+        if (layout.is_conveyor_feasible)
         {
-            p.x -= min_bx;
-            p.y -= min_by;
+            if (attempt > 1)
+            {
+                std::cout << "[OK] Conveyor routing feasible for "
+                          << product.name << " on attempt " << attempt << "!\n";
+            }
+
+            product.factory_width = SolutionIntegerValue(response, bbox_w);
+            product.factory_height = SolutionIntegerValue(response, bbox_h);
+            product.factory_depot = total_unloaders * 3;
+
+            layout.product_name = product.name;
+            layout.bounding_width = static_cast<int>(product.factory_width);
+            layout.bounding_height = static_cast<int>(product.factory_height);
+            layout.depot_length = static_cast<int>(product.factory_depot);
+
+            // Coordinate Normalization
+            int min_bx = 9999, max_bx = -9999;
+            int min_by = 9999, max_by = -9999;
+            for (const auto& pe : layout.entities)
+            {
+                min_bx = std::min(min_bx, pe.x);
+                max_bx = std::max(max_bx, pe.x + pe.width - 1);
+                min_by = std::min(min_by, pe.y);
+                max_by = std::max(max_by, pe.y + pe.height - 1);
+            }
+            for (const auto& [cell, mask] : layout.conveyor_cells)
+            {
+                min_bx = std::min(min_bx, cell.first);
+                max_bx = std::max(max_bx, cell.first);
+                min_by = std::min(min_by, cell.second);
+                max_by = std::max(max_by, cell.second);
+            }
+
+            for (auto& pe : layout.entities)
+            {
+                pe.x -= min_bx;
+                pe.y -= min_by;
+                for (auto& p : pe.ports)
+                {
+                    p.x -= min_bx;
+                    p.y -= min_by;
+                }
+            }
+
+            std::map<std::pair<int, int>, int> shifted_conveyors;
+            std::map<std::pair<int, int>, std::string> shifted_items;
+            for (const auto& [cell, mask] : layout.conveyor_cells)
+            {
+                shifted_conveyors[{cell.first - min_bx, cell.second - min_by}] =
+                    mask;
+            }
+            for (const auto& [cell, item] : layout.conveyor_items)
+            {
+                shifted_items[{cell.first - min_bx, cell.second - min_by}] =
+                    item;
+            }
+            layout.conveyor_cells = std::move(shifted_conveyors);
+            layout.conveyor_items = std::move(shifted_items);
+
+            layout.bounding_width = max_bx - min_bx + 1;
+            layout.bounding_height = max_by - min_by + 1;
+            product.factory_width = layout.bounding_width;
+            product.factory_height = layout.bounding_height;
+
+            return true;
+        }
+
+        // Infeasible: Add no-good cuts to CP-SAT model and retry!
+        std::cout << "[INFO] Subproblem conveyor check failed for "
+                  << product.name << " on attempt " << attempt << " ("
+                  << failed_stream_indices.size()
+                  << " failed streams). Repeating subproblem with no-good cuts...\n";
+
+        std::vector<BoolVar> entity_matches(N);
+        std::vector<BoolVar> not_matches;
+        for (int i = 0; i < N; ++i)
+        {
+            int sol_x = SolutionIntegerValue(response, posX[i]);
+            int sol_y = SolutionIntegerValue(response, posY[i]);
+            int sol_r = 0;
+            for (int r = 0; r < 4; ++r)
+            {
+                if (SolutionBooleanValue(response, rotB[i][r]))
+                {
+                    sol_r = r;
+                    break;
+                }
+            }
+
+            BoolVar match_x = model.NewBoolVar();
+            BoolVar match_y = model.NewBoolVar();
+            model.AddEquality(posX[i], sol_x).OnlyEnforceIf(match_x);
+            model.AddNotEqual(posX[i], sol_x).OnlyEnforceIf(match_x.Not());
+            model.AddEquality(posY[i], sol_y).OnlyEnforceIf(match_y);
+            model.AddNotEqual(posY[i], sol_y).OnlyEnforceIf(match_y.Not());
+
+            BoolVar match_i = model.NewBoolVar();
+            model.AddBoolAnd({match_x, match_y, rotB[i][sol_r]})
+                .OnlyEnforceIf(match_i);
+            model.AddBoolOr(
+                     {match_x.Not(), match_y.Not(), rotB[i][sol_r].Not()})
+                .OnlyEnforceIf(match_i.Not());
+
+            entity_matches[i] = match_i;
+            not_matches.push_back(match_i.Not());
+        }
+
+        // Global cut: forbid the exact full placement
+        model.AddBoolOr(not_matches);
+
+        // Targeted cuts on failed streams: forbid src and dst both staying in current position/rotation
+        for (int s_idx : failed_stream_indices)
+        {
+            int u = streams[s_idx].src_entity;
+            int v = streams[s_idx].dst_entity;
+            if (u >= 0 && u < N && v >= 0 && v < N)
+            {
+                model.AddBoolOr(
+                    {entity_matches[u].Not(), entity_matches[v].Not()});
+            }
         }
     }
 
-    std::map<std::pair<int, int>, int> shifted_conveyors;
-    std::map<std::pair<int, int>, std::string> shifted_items;
-    for (const auto& [cell, mask] : layout.conveyor_cells)
-    {
-        shifted_conveyors[{cell.first - min_bx, cell.second - min_by}] = mask;
-    }
-    for (const auto& [cell, item] : layout.conveyor_items)
-    {
-        shifted_items[{cell.first - min_bx, cell.second - min_by}] = item;
-    }
-    layout.conveyor_cells = std::move(shifted_conveyors);
-    layout.conveyor_items = std::move(shifted_items);
-
-    layout.bounding_width = max_bx - min_bx + 1;
-    layout.bounding_height = max_by - min_by + 1;
-    product.factory_width = layout.bounding_width;
-    product.factory_height = layout.bounding_height;
-
-    return true;
+    return false;
 }
