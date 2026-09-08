@@ -1,7 +1,31 @@
 #include "product.hpp"
 #include <csv.h>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <nlohmann/json.hpp>
+
+std::vector<Product> Product::readJSON(const std::string& filename)
+{
+    std::ifstream file(filename);
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Could not open products JSON file: " +
+                                 filename);
+    }
+    nlohmann::json j;
+    file >> j;
+
+    std::vector<Product> products;
+    for (const auto& item : j)
+    {
+        Product prod;
+        prod.name = item.value("product", "");
+        prod.value = item.value("value", 0.0);
+        products.push_back(prod);
+    }
+    return products;
+}
 
 std::vector<Product> Product::readCSV(const std::string& filename)
 {

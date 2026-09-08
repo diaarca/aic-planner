@@ -4,8 +4,20 @@
     "pac_width": 70,
     "pac_height": 70,
     "static_depots": [
-      { "x": 0, "y": 35, "type": "input", "item_kind": "product", "item_name": "originium" },
-      { "x": 69, "y": 35, "type": "output", "item_kind": "product", "item_name": "hc_valley_battery" }
+      {
+        "x": 0,
+        "y": 35,
+        "type": "input",
+        "item_kind": "product",
+        "item_name": "originium"
+      },
+      {
+        "x": 69,
+        "y": 35,
+        "type": "output",
+        "item_kind": "product",
+        "item_name": "hc_valley_battery"
+      }
     ]
   },
   {

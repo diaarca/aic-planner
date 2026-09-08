@@ -12,6 +12,7 @@ struct Mineral
     Mineral() = default;
     Mineral(std::string n, double l) : name(n), limit(l) {}
 
+    static std::vector<Mineral> readJSON(const std::string& filename);
     static std::vector<Mineral> readCSV(const std::string& filename);
 
     friend std::ostream& operator<<(std::ostream& os, const Mineral& m);

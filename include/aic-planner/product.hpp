@@ -18,6 +18,7 @@ struct Product
     double factory_depot;
     std::map<std::string, double> factory_facilities;
 
+    static std::vector<Product> readJSON(const std::string& filename);
     static std::vector<Product> readCSV(const std::string& filename);
 
     friend std::ostream& operator<<(std::ostream& os, const Product& p);

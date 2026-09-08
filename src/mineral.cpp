@@ -1,7 +1,29 @@
 #include "mineral.hpp"
 #include <csv.h>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <nlohmann/json.hpp>
+
+std::vector<Mineral> Mineral::readJSON(const std::string& filename)
+{
+    std::ifstream file(filename);
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Could not open minerals JSON file: " +
+                                 filename);
+    }
+    nlohmann::json j;
+    file >> j;
+
+    std::vector<Mineral> minerals;
+    for (const auto& item : j)
+    {
+        minerals.emplace_back(item.value("mineral", ""),
+                              item.value("limit", 0.0));
+    }
+    return minerals;
+}
 
 std::vector<Mineral> Mineral::readCSV(const std::string& filename)
 {

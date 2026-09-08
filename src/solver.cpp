@@ -219,15 +219,27 @@ void Solver::declareConstraints()
     int64_t static_demand = 0;
     for (const auto& area : _areas)
     {
-        static_demand += static_cast<int64_t>(
-            area.area_facilities.at("zipline") * _facility_power.at("zipline"));
-
-        static_demand += static_cast<int64_t>(
-            area.area_facilities.at("defense") * _facility_power.at("defense"));
-
-        static_demand +=
-            static_cast<int64_t>(area.area_facilities.at("mining_rig") *
-                                 _facility_power.at("mining_rig"));
+        if (area.area_facilities.count("zipline") &&
+            _facility_power.count("zipline"))
+        {
+            static_demand +=
+                static_cast<int64_t>(area.area_facilities.at("zipline") *
+                                     _facility_power.at("zipline"));
+        }
+        if (area.area_facilities.count("defense") &&
+            _facility_power.count("defense"))
+        {
+            static_demand +=
+                static_cast<int64_t>(area.area_facilities.at("defense") *
+                                     _facility_power.at("defense"));
+        }
+        if (area.area_facilities.count("mining_rig") &&
+            _facility_power.count("mining_rig"))
+        {
+            static_demand +=
+                static_cast<int64_t>(area.area_facilities.at("mining_rig") *
+                                     _facility_power.at("mining_rig"));
+        }
     }
 
     LinearExpr c_power_cons;
@@ -361,14 +373,20 @@ void Solver::displaySolution()
     double p_zip = 0, p_def = 0, p_mine = 0, p_fact = 0;
     for (const auto& area : _areas)
     {
-        p_zip +=
-            area.area_facilities.at("zipline") * _facility_power.at("zipline");
+        if (area.area_facilities.count("zipline") &&
+            _facility_power.count("zipline"))
+            p_zip += area.area_facilities.at("zipline") *
+                     _facility_power.at("zipline");
 
-        p_def +=
-            area.area_facilities.at("defense") * _facility_power.at("defense");
+        if (area.area_facilities.count("defense") &&
+            _facility_power.count("defense"))
+            p_def += area.area_facilities.at("defense") *
+                     _facility_power.at("defense");
 
-        p_mine += area.area_facilities.at("mining_rig") *
-                  _facility_power.at("mining_rig");
+        if (area.area_facilities.count("mining_rig") &&
+            _facility_power.count("mining_rig"))
+            p_mine += area.area_facilities.at("mining_rig") *
+                      _facility_power.at("mining_rig");
     }
     for (size_t p = 0; p < _products.size(); ++p)
     {

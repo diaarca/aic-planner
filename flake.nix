@@ -59,6 +59,7 @@
             # dependencies
             or-tools
             fast-cpp-csv-parser
+            nlohmann_json
             protobuf
             re2
             zlib

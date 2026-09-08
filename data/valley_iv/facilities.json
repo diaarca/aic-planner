@@ -1041,23 +1041,7 @@
         "type": "product"
       }
     ],
-    "outputs": [
-      {
-        "x": 0,
-        "y": 2,
-        "type": "product"
-      },
-      {
-        "x": 1,
-        "y": 2,
-        "type": "product"
-      },
-      {
-        "x": 2,
-        "y": 2,
-        "type": "product"
-      }
-    ],
+    "outputs": [],
     "recipes": []
   },
   {

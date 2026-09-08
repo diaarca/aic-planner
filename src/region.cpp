@@ -1,7 +1,26 @@
 #include "region.hpp"
 #include <csv.h>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <nlohmann/json.hpp>
+
+Region Region::readJSON(const std::string& filename)
+{
+    std::ifstream file(filename);
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Could not open region JSON file: " +
+                                 filename);
+    }
+    nlohmann::json j;
+    file >> j;
+
+    Region region;
+    region.base_power = j.value("base_power", 0.0);
+    region.storage = j.value("storage", 0.0);
+    return region;
+}
 
 Region Region::readCSV(const std::string& filename)
 {

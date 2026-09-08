@@ -1,7 +1,28 @@
 #include "fuel.hpp"
 #include <csv.h>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <nlohmann/json.hpp>
+
+std::vector<Fuel> Fuel::readJSON(const std::string& filename)
+{
+    std::ifstream file(filename);
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Could not open fuels JSON file: " + filename);
+    }
+    nlohmann::json j;
+    file >> j;
+
+    std::vector<Fuel> fuels;
+    for (const auto& item : j)
+    {
+        fuels.emplace_back(item.value("fuel", ""), item.value("power", 0.0),
+                           item.value("duration", 0.0));
+    }
+    return fuels;
+}
 
 std::vector<Fuel> Fuel::readCSV(const std::string& filename)
 {
