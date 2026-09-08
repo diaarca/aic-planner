@@ -63,6 +63,7 @@ int main(int argc, char* argv[])
                 << "=======================================================\n";
             BlueprintSolver blueprint_solver(facilities, minerals, areas);
             std::vector<Product> producible_products;
+            std::map<std::string, BlueprintLayout> product_layouts;
 
             for (auto& prod : products)
             {
@@ -72,6 +73,7 @@ int main(int argc, char* argv[])
                     std::cout << "\n[OK] Blueprint generated for: " << prod.name
                               << "\n";
                     layout.print();
+                    product_layouts[prod.name] = layout;
                     producible_products.push_back(prod);
                 }
                 else
@@ -98,6 +100,7 @@ int main(int argc, char* argv[])
 
             Solver solver(producible_products, minerals, areas, fuels,
                           facility_powers, region);
+            solver.setBlueprintLayouts(product_layouts);
             solver.solve();
         }
         else

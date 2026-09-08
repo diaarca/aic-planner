@@ -9,10 +9,22 @@
 #include <string>
 #include <vector>
 
+struct PlacedPort
+{
+    int x = 0;
+    int y = 0;
+    bool is_input = false;
+    int fx = 0;
+    int fy = 0;
+    std::string type;
+};
+
 struct PlacedBlueprintEntity
 {
     std::string type;
     std::string name;
+    std::string code;
+    int color_code = 39;
     int x = 0;
     int y = 0;
     int width = 0;
@@ -20,6 +32,15 @@ struct PlacedBlueprintEntity
     int rotation = 0; // 0, 90, 180, 270
     bool is_unloader = false;
     std::string mineral;
+    std::vector<PlacedPort> ports;
+};
+
+enum ConveyorDir
+{
+    CONV_NORTH = 1,
+    CONV_SOUTH = 2,
+    CONV_EAST = 4,
+    CONV_WEST = 8
 };
 
 struct BlueprintLayout
@@ -29,6 +50,9 @@ struct BlueprintLayout
     int bounding_height = 0;
     int depot_length = 0;
     std::vector<PlacedBlueprintEntity> entities;
+    std::map<std::pair<int, int>, int> conveyor_cells; // (x, y) -> bitmask of ConveyorDir
+    std::map<std::pair<int, int>, std::string> conveyor_items;
+    bool is_conveyor_feasible = true;
 
     void print() const;
 };

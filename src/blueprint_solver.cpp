@@ -50,33 +50,348 @@ bool BlueprintSolver::isMineral(const std::string& item) const
     return (findRecipeFor(item, dummy) == nullptr);
 }
 
+static int getFacilityColor(const std::string& type)
+{
+    if (type == "unloader")
+    {
+        return 208; // Bright Orange
+    }
+    if (type == "refining_unit")
+    {
+        return 39; // Deep Cyan
+    }
+    if (type == "fitting_unit")
+    {
+        return 48; // Emerald / Mint Green
+    }
+    if (type == "shredding_unit")
+    {
+        return 177; // Purple
+    }
+    if (type == "packaging_unit")
+    {
+        return 33; // Dodger Blue
+    }
+    if (type == "protocol_stash")
+    {
+        return 220; // Bright Gold / Yellow
+    }
+    if (type == "moulding_unit")
+        return 205;
+    if (type == "seed_picking_unit")
+        return 118;
+    if (type == "planting_unit")
+        return 34;
+    if (type == "filling_unit")
+        return 209;
+    if (type == "grinding_unit")
+        return 69;
+    if (type == "gearing_unit")
+        return 136;
+
+    size_t hash = std::hash<std::string>{}(type);
+    return 30 + static_cast<int>(hash % 190);
+}
+
+static std::string getFacilityCode(const std::string& type,
+                                   int instance_idx = 0)
+{
+    if (type == "unloader")
+        return "U" + std::to_string(instance_idx + 1);
+    if (type == "refining_unit")
+        return "R" + std::to_string(instance_idx + 1);
+    if (type == "fitting_unit")
+        return "F" + std::to_string(instance_idx + 1);
+    if (type == "shredding_unit")
+        return "S" + std::to_string(instance_idx + 1);
+    if (type == "packaging_unit")
+        return "PK";
+    if (type == "protocol_stash")
+        return "PS";
+    if (type == "moulding_unit")
+        return "ML";
+    if (type == "seed_picking_unit")
+        return "SP";
+    if (type == "planting_unit")
+        return "PL";
+    if (type == "filling_unit")
+        return "FL";
+    if (type == "grinding_unit")
+        return "GR";
+    if (type == "gearing_unit")
+        return "GE";
+
+    if (type.size() >= 2)
+        return type.substr(0, 2);
+    return "XX";
+}
+
 void BlueprintLayout::print() const
 {
-    std::cout << "\n=======================================================\n";
-    std::cout << "  BLUEPRINT LAYOUT: " << product_name << "\n";
-    std::cout << "  Bounding Box: " << bounding_width << " x "
-              << bounding_height
-              << " (Area: " << (bounding_width * bounding_height) << ")\n";
-    std::cout << "  Depot Length Required: " << depot_length << "\n";
-    std::cout << "-------------------------------------------------------\n";
-    std::cout << std::left << std::setw(25) << "Entity"
-              << " | " << std::setw(8) << "Pos (X,Y)"
-              << " | " << std::setw(8) << "Size"
-              << " | " << std::setw(6) << "Rot"
-              << "\n";
-    std::cout << std::string(55, '-') << "\n";
+    if (entities.empty())
+        return;
+
+    int min_x = 9999, max_x = -9999;
+    int min_y = 9999, max_y = -9999;
+    for (const auto& e : entities)
+    {
+        min_x = std::min(min_x, e.x);
+        max_x = std::max(max_x, e.x + e.width - 1);
+        min_y = std::min(min_y, e.y);
+        max_y = std::max(max_y, e.y + e.height - 1);
+    }
+    for (const auto& [cell, mask] : conveyor_cells)
+    {
+        min_x = std::min(min_x, cell.first);
+        max_x = std::max(max_x, cell.first);
+        min_y = std::min(min_y, cell.second);
+        max_y = std::max(max_y, cell.second);
+    }
+
+    std::cout << "\n\033[1;36m================================================="
+                 "===============================\033[0m\n";
+    std::cout << "\033[1;37m  BLUEPRINT 2D TERMINAL MAP: \033[1;33m"
+              << product_name << "\033[0m\n";
+    std::cout << "  Bounding Box: \033[1m" << bounding_width << " x "
+              << bounding_height << "\033[0m (Area: \033[1;32m"
+              << (bounding_width * bounding_height) << "\033[0m) | "
+              << "Depot Length: \033[1;35m" << depot_length << "\033[0m\n";
+    std::cout << "\033[1;36m==================================================="
+                 "=============================\033[0m\n\n";
+
+    struct CellInfo
+    {
+        int bg = -1;
+        int fg = 16;
+        std::string text = " ·";
+    };
+    std::map<std::pair<int, int>, CellInfo> grid;
 
     for (const auto& e : entities)
     {
-        std::string pos =
-            "(" + std::to_string(e.x) + "," + std::to_string(e.y) + ")";
-        std::string size =
-            std::to_string(e.width) + "x" + std::to_string(e.height);
-        std::cout << std::left << std::setw(25) << e.name << " | "
-                  << std::setw(8) << pos << " | " << std::setw(8) << size
-                  << " | " << e.rotation << "°\n";
+        int cx = e.x + e.width / 2;
+        int cy = e.y + e.height / 2;
+        int fg =
+            (e.color_code == 33 || e.color_code == 160 || e.color_code == 34)
+                ? 15
+                : 16;
+
+        for (int dy = 0; dy < e.height; ++dy)
+        {
+            for (int dx = 0; dx < e.width; ++dx)
+            {
+                int cur_x = e.x + dx;
+                int cur_y = e.y + dy;
+
+                CellInfo ci;
+                ci.bg = e.color_code;
+                ci.fg = fg;
+                ci.text = "  ";
+
+                if (cur_x == cx && cur_y == cy)
+                {
+                    ci.text = e.code;
+                    if (ci.text.size() == 1)
+                        ci.text += " ";
+                }
+
+                for (const auto& p : e.ports)
+                {
+                    if (p.x == cur_x && p.y == cur_y)
+                    {
+                        if (p.is_input)
+                        {
+                            // Input arrow enters the facility
+                            if (p.fy == 1)
+                                ci.text = "▼ ";
+                            else if (p.fy == -1)
+                                ci.text = "▲ ";
+                            else if (p.fx == 1)
+                                ci.text = "◄ ";
+                            else if (p.fx == -1)
+                                ci.text = "► ";
+                        }
+                        else
+                        {
+                            // Output arrow exits the facility
+                            if (p.fy == 1)
+                                ci.text = "▲ ";
+                            else if (p.fy == -1)
+                                ci.text = "▼ ";
+                            else if (p.fx == 1)
+                                ci.text = "► ";
+                            else if (p.fx == -1)
+                                ci.text = "◄ ";
+                        }
+                        break;
+                    }
+                }
+                grid[{cur_x, cur_y}] = ci;
+            }
+        }
     }
-    std::cout << "=======================================================\n";
+
+    // Place conveyors on empty cells
+    for (const auto& [cell, mask] : conveyor_cells)
+    {
+        int cx = cell.first;
+        int cy = cell.second;
+        if (grid.count({cx, cy}))
+            continue; // Entity footprint takes precedence
+
+        CellInfo ci;
+        ci.bg = -1;
+        ci.fg = 220; // Amber yellow
+
+        std::string sym = "══";
+        if (mask == (CONV_NORTH | CONV_SOUTH))
+            sym = "║ ";
+        else if (mask == (CONV_EAST | CONV_WEST))
+            sym = "══";
+        else if (mask == (CONV_NORTH | CONV_EAST))
+            sym = "╚═";
+        else if (mask == (CONV_SOUTH | CONV_EAST))
+            sym = "╔═";
+        else if (mask == (CONV_NORTH | CONV_WEST))
+            sym = "╝ ";
+        else if (mask == (CONV_SOUTH | CONV_WEST))
+            sym = "╗ ";
+        else if ((mask & CONV_NORTH) && (mask & CONV_SOUTH) &&
+                 (mask & CONV_EAST) && (mask & CONV_WEST))
+            sym = "╬═";
+        else if ((mask & CONV_EAST) && (mask & CONV_WEST) &&
+                 (mask & CONV_NORTH))
+            sym = "╩═";
+        else if ((mask & CONV_EAST) && (mask & CONV_WEST) &&
+                 (mask & CONV_SOUTH))
+            sym = "╦═";
+        else if ((mask & CONV_NORTH) && (mask & CONV_SOUTH) &&
+                 (mask & CONV_EAST))
+            sym = "╠═";
+        else if ((mask & CONV_NORTH) && (mask & CONV_SOUTH) &&
+                 (mask & CONV_WEST))
+            sym = "╣ ";
+        else if (mask & (CONV_NORTH | CONV_SOUTH))
+            sym = "║ ";
+        else if (mask & (CONV_EAST | CONV_WEST))
+            sym = "══";
+
+        ci.text = sym;
+        grid[{cx, cy}] = ci;
+    }
+
+    // Top depot banner
+    bool has_depot_at_top = false;
+    for (const auto& e : entities)
+    {
+        if (e.is_unloader && e.y + e.height - 1 == max_y)
+            has_depot_at_top = true;
+    }
+    if (has_depot_at_top)
+    {
+        std::cout << "        \033[1;33m";
+        for (int x = min_x; x <= max_x; ++x)
+            std::cout << "══";
+        std::cout << " [STATIC DEPOT BOUNDARY]\033[0m\n";
+    }
+
+    // X-axis header
+    if (max_x >= 10)
+    {
+        std::cout << "        ";
+        for (int x = min_x; x <= max_x; ++x)
+        {
+            int t = x / 10;
+            if (t > 0)
+                std::cout << " " << t;
+            else
+                std::cout << "  ";
+        }
+        std::cout << "\n";
+    }
+    std::cout << "        ";
+    for (int x = min_x; x <= max_x; ++x)
+    {
+        std::cout << " " << (x % 10);
+    }
+    std::cout << "\n";
+
+    // Top border
+    std::cout << "      ┌";
+    for (int x = min_x; x <= max_x; ++x)
+        std::cout << "──";
+    std::cout << "┐\n";
+
+    // Rows
+    for (int y = max_y; y >= min_y; --y)
+    {
+        std::cout << "  " << std::setw(2) << y << "  │";
+        for (int x = min_x; x <= max_x; ++x)
+        {
+            auto it = grid.find({x, y});
+            if (it != grid.end())
+            {
+                if (it->second.bg >= 0)
+                {
+                    std::cout << "\033[48;5;" << it->second.bg << "m\033[38;5;"
+                              << it->second.fg << "m" << it->second.text
+                              << "\033[0m";
+                }
+                else
+                {
+                    // Conveyor tile without background
+                    std::cout << "\033[1;33m" << it->second.text << "\033[0m";
+                }
+            }
+            else
+            {
+                std::cout << "\033[38;5;239m ·\033[0m";
+            }
+        }
+        std::cout << "│  " << std::setw(2) << y << "\n";
+    }
+
+    // Bottom border
+    std::cout << "      └";
+    for (int x = min_x; x <= max_x; ++x)
+        std::cout << "──";
+    std::cout << "┘\n";
+
+    // Bottom X-axis
+    std::cout << "        ";
+    for (int x = min_x; x <= max_x; ++x)
+    {
+        std::cout << " " << (x % 10);
+    }
+    std::cout << "\n";
+
+    // Print Legend
+    std::cout << "\033[1;36m---------------------------------------------------"
+                 "-----------------------------\033[0m\n";
+    std::cout << "\033[1;37m  FACILITY LEGEND\033[0m\n";
+    std::cout << "\033[1;36m---------------------------------------------------"
+                 "-----------------------------\033[0m\n";
+    for (const auto& e : entities)
+    {
+        std::cout << "  \033[48;5;" << e.color_code << "m  \033[0m "
+                  << "\033[1m[" << std::left << std::setw(2) << e.code
+                  << "]\033[0m " << std::left << std::setw(26) << e.name
+                  << " | Size: " << std::setw(4)
+                  << (std::to_string(e.width) + "x" + std::to_string(e.height))
+                  << " | Rot: " << std::right << std::setw(3) << e.rotation
+                  << "°"
+                  << " | Pos: (" << std::setw(2) << e.x << "," << std::setw(2)
+                  << e.y << ")";
+        if (e.is_unloader)
+        {
+            std::cout << " [Mineral: " << e.mineral << "]";
+        }
+        std::cout << "\n";
+    }
+    std::cout << "  \033[1;33m══\033[0m Conveyors | Turns: \033[1;33m╔═ ╗  ╚═ ╝ \033[0m| Crossing: \033[1;33m╬═\033[0m\n";
+    std::cout << "  Port Arrows: \033[1m▲ ▼ ► ◄\033[0m (Output = exit facility, Input = enter facility)\n";
+    std::cout << "\033[1;36m==================================================="
+                 "=============================\033[0m\n";
 }
 
 struct BlueprintEntityToPlace
@@ -296,6 +611,15 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
 
     // Streams to connect
     std::vector<StreamLink> streams;
+    std::map<int, int> used_in_port;
+    std::map<int, int> used_out_port;
+
+    auto add_stream = [&](int src, int dst, const std::string& item, double rate) {
+        int out_p = used_out_port[src]++;
+        int in_p = used_in_port[dst]++;
+        streams.push_back({src, out_p, dst, in_p, item, rate});
+    };
+
     // Connect unloaders to intermediate facilities consuming mineral
     for (const auto& [m, u_ids] : unloader_ids_by_mineral)
     {
@@ -304,7 +628,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
             if (ent.item_consumed == m && !ent.is_unloader)
             {
                 int u_id = u_ids[0];
-                streams.push_back({u_id, 0, ent.id, 0, m, 0.5});
+                add_stream(u_id, ent.id, m, 0.5);
             }
         }
         // Also check root facility
@@ -312,7 +636,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         {
             if (ing.item == m)
             {
-                streams.push_back({u_ids[0], 0, root_entity_id, 0, m, 0.5});
+                add_stream(u_ids[0], root_entity_id, m, 0.5);
             }
         }
     }
@@ -332,12 +656,9 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         }
         if (consumed_by_root)
         {
-            int p_idx = 0;
             for (int fid : f_ids)
             {
-                streams.push_back(
-                    {fid, 0, root_entity_id, p_idx % 6, item, 0.5});
-                p_idx++;
+                add_stream(fid, root_entity_id, item, 0.5);
             }
         }
         else
@@ -348,15 +669,14 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
                 if (ent.item_consumed == item && ent.id != root_entity_id &&
                     !ent.is_unloader)
                 {
-                    streams.push_back({f_ids[0], 0, ent.id, 0, item, 0.5});
+                    add_stream(f_ids[0], ent.id, item, 0.5);
                 }
             }
         }
     }
 
     // Root facility to stash
-    streams.push_back(
-        {root_entity_id, 0, stash_entity_id, 1, product.name, base_rate});
+    add_stream(root_entity_id, stash_entity_id, product.name, base_rate);
 
     // Determine grid bounds from area
     int grid_w = 30;
@@ -594,6 +914,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
     layout.depot_length = static_cast<int>(product.factory_depot);
     layout.entities.clear();
 
+    std::map<std::string, int> type_instance_count;
     for (int i = 0; i < N; ++i)
     {
         PlacedBlueprintEntity pe;
@@ -606,6 +927,10 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         pe.is_unloader = entities[i].is_unloader;
         pe.mineral = entities[i].item_produced;
 
+        int inst_idx = type_instance_count[pe.type]++;
+        pe.code = getFacilityCode(pe.type, inst_idx);
+        pe.color_code = getFacilityColor(pe.type);
+
         int rot = 0;
         for (int r = 0; r < 4; ++r)
         {
@@ -616,8 +941,260 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
             }
         }
         pe.rotation = rot;
+
+        int bw = entities[i].base_w;
+        int bh = entities[i].base_h;
+        auto add_placed_port = [&](const Port& p, bool is_in)
+        {
+            int px = 0, py = 0, fx = 0, fy = 0;
+            if (rot == 0)
+            {
+                px = p.x;
+                py = p.y;
+                fx = p.fx;
+                fy = p.fy;
+            }
+            else if (rot == 90)
+            {
+                px = p.y;
+                py = bw - 1 - p.x;
+                fx = p.fy;
+                fy = -p.fx;
+            }
+            else if (rot == 180)
+            {
+                px = bw - 1 - p.x;
+                py = bh - 1 - p.y;
+                fx = -p.fx;
+                fy = -p.fy;
+            }
+            else if (rot == 270)
+            {
+                px = bh - 1 - p.y;
+                py = p.x;
+                fx = -p.fy;
+                fy = p.fx;
+            }
+            pe.ports.push_back({pe.x + px, pe.y + py, is_in, fx, fy, p.type});
+        };
+
+        for (const auto& in_p : entities[i].inputs)
+            add_placed_port(in_p, true);
+        for (const auto& out_p : entities[i].outputs)
+            add_placed_port(out_p, false);
+
         layout.entities.push_back(pe);
     }
+
+    // -------------------------------------------------------------
+    // Conveyor Routing & Feasibility Check
+    // -------------------------------------------------------------
+    layout.conveyor_cells.clear();
+    layout.conveyor_items.clear();
+    layout.is_conveyor_feasible = true;
+
+    std::set<std::pair<int, int>> facility_cells;
+    for (const auto& pe : layout.entities)
+    {
+        for (int dy = 0; dy < pe.height; ++dy)
+        {
+            for (int dx = 0; dx < pe.width; ++dx)
+            {
+                facility_cells.insert({pe.x + dx, pe.y + dy});
+            }
+        }
+    }
+
+    auto get_dir_mask = [](int dx, int dy) -> int
+    {
+        if (dy == 1) return CONV_NORTH;
+        if (dy == -1) return CONV_SOUTH;
+        if (dx == 1) return CONV_EAST;
+        if (dx == -1) return CONV_WEST;
+        return 0;
+    };
+
+    for (const auto& s : streams)
+    {
+        if (s.src_entity >= static_cast<int>(layout.entities.size()) ||
+            s.dst_entity >= static_cast<int>(layout.entities.size()))
+        {
+            continue;
+        }
+
+        const auto& pe_src = layout.entities[s.src_entity];
+        std::vector<PlacedPort> src_outputs;
+        for (const auto& p : pe_src.ports)
+        {
+            if (!p.is_input) src_outputs.push_back(p);
+        }
+        if (src_outputs.empty()) continue;
+        const auto& src_port = src_outputs[s.src_port_idx % src_outputs.size()];
+
+        const auto& pe_dst = layout.entities[s.dst_entity];
+        std::vector<PlacedPort> dst_inputs;
+        for (const auto& p : pe_dst.ports)
+        {
+            if (p.is_input) dst_inputs.push_back(p);
+        }
+        if (dst_inputs.empty()) continue;
+        const auto& dst_port = dst_inputs[s.dst_port_idx % dst_inputs.size()];
+
+        int src_ax = src_port.x + src_port.fx;
+        int src_ay = src_port.y + src_port.fy;
+        int dst_ax = dst_port.x + dst_port.fx;
+        int dst_ay = dst_port.y + dst_port.fy;
+
+        std::queue<std::pair<int, int>> q;
+        std::map<std::pair<int, int>, std::pair<int, int>> came_from;
+        std::set<std::pair<int, int>> visited;
+
+        std::pair<int, int> start_pt = {src_ax, src_ay};
+        std::pair<int, int> target_pt = {dst_ax, dst_ay};
+
+        q.push(start_pt);
+        visited.insert(start_pt);
+
+        bool found = (start_pt == target_pt);
+        while (!q.empty() && !found)
+        {
+            auto curr = q.front();
+            q.pop();
+
+            if (curr == target_pt)
+            {
+                found = true;
+                break;
+            }
+
+            const int dxy[4][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+            for (int d = 0; d < 4; ++d)
+            {
+                int nx = curr.first + dxy[d][0];
+                int ny = curr.second + dxy[d][1];
+                std::pair<int, int> next_pt = {nx, ny};
+
+                if (nx < 0 || nx >= grid_w || ny < 0 || ny >= grid_h)
+                    continue;
+                if (facility_cells.count(next_pt))
+                    continue; // No overlap with facilities
+                if (visited.count(next_pt))
+                    continue;
+
+                visited.insert(next_pt);
+                came_from[next_pt] = curr;
+                if (next_pt == target_pt)
+                {
+                    found = true;
+                    break;
+                }
+                q.push(next_pt);
+            }
+        }
+
+        if (!found)
+        {
+            layout.is_conveyor_feasible = false;
+            std::cerr << "[WARNING] Conveyor path infeasible for stream: "
+                      << s.item << " from " << pe_src.name << " to "
+                      << pe_dst.name << std::endl;
+            continue;
+        }
+
+        // Reconstruct path
+        std::vector<std::pair<int, int>> path;
+        auto curr = target_pt;
+        while (curr != start_pt)
+        {
+            path.push_back(curr);
+            curr = came_from[curr];
+        }
+        path.push_back(start_pt);
+        std::reverse(path.begin(), path.end());
+
+        // Connect path segments into layout.conveyor_cells
+        for (size_t k = 0; k < path.size(); ++k)
+        {
+            auto pt = path[k];
+            if (k == 0)
+            {
+                int to_src_dx = -src_port.fx;
+                int to_src_dy = -src_port.fy;
+                layout.conveyor_cells[pt] |= get_dir_mask(to_src_dx, to_src_dy);
+            }
+            else
+            {
+                int prev_dx = path[k - 1].first - pt.first;
+                int prev_dy = path[k - 1].second - pt.second;
+                layout.conveyor_cells[pt] |= get_dir_mask(prev_dx, prev_dy);
+            }
+
+            if (k == path.size() - 1)
+            {
+                int to_dst_dx = -dst_port.fx;
+                int to_dst_dy = -dst_port.fy;
+                layout.conveyor_cells[pt] |= get_dir_mask(to_dst_dx, to_dst_dy);
+            }
+            else
+            {
+                int next_dx = path[k + 1].first - pt.first;
+                int next_dy = path[k + 1].second - pt.second;
+                layout.conveyor_cells[pt] |= get_dir_mask(next_dx, next_dy);
+            }
+
+            layout.conveyor_items[pt] = s.item;
+        }
+    }
+
+    // -------------------------------------------------------------
+    // Coordinate Normalization
+    // -------------------------------------------------------------
+    int min_bx = 9999, max_bx = -9999;
+    int min_by = 9999, max_by = -9999;
+    for (const auto& pe : layout.entities)
+    {
+        min_bx = std::min(min_bx, pe.x);
+        max_bx = std::max(max_bx, pe.x + pe.width - 1);
+        min_by = std::min(min_by, pe.y);
+        max_by = std::max(max_by, pe.y + pe.height - 1);
+    }
+    for (const auto& [cell, mask] : layout.conveyor_cells)
+    {
+        min_bx = std::min(min_bx, cell.first);
+        max_bx = std::max(max_bx, cell.first);
+        min_by = std::min(min_by, cell.second);
+        max_by = std::max(max_by, cell.second);
+    }
+
+    // Shift all coordinates to start at (0, 0)
+    for (auto& pe : layout.entities)
+    {
+        pe.x -= min_bx;
+        pe.y -= min_by;
+        for (auto& p : pe.ports)
+        {
+            p.x -= min_bx;
+            p.y -= min_by;
+        }
+    }
+
+    std::map<std::pair<int, int>, int> shifted_conveyors;
+    std::map<std::pair<int, int>, std::string> shifted_items;
+    for (const auto& [cell, mask] : layout.conveyor_cells)
+    {
+        shifted_conveyors[{cell.first - min_bx, cell.second - min_by}] = mask;
+    }
+    for (const auto& [cell, item] : layout.conveyor_items)
+    {
+        shifted_items[{cell.first - min_bx, cell.second - min_by}] = item;
+    }
+    layout.conveyor_cells = std::move(shifted_conveyors);
+    layout.conveyor_items = std::move(shifted_items);
+
+    layout.bounding_width = max_bx - min_bx + 1;
+    layout.bounding_height = max_by - min_by + 1;
+    product.factory_width = layout.bounding_width;
+    product.factory_height = layout.bounding_height;
 
     return true;
 }
