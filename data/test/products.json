@@ -1,0 +1,58 @@
+[
+  {
+    "product": "hc_valley_battery",
+    "value": 70.0
+  },
+  {
+    "product": "buck_capsule_a",
+    "value": 70.0
+  },
+  {
+    "product": "canned_citrome_a",
+    "value": 70.0
+  },
+  {
+    "product": "sc_valley_battery",
+    "value": 30.0
+  },
+  {
+    "product": "buck_capsule_b",
+    "value": 27.0
+  },
+  {
+    "product": "canned_citrome_b",
+    "value": 27.0
+  },
+  {
+    "product": "lc_valley_battery",
+    "value": 16.0
+  },
+  {
+    "product": "buck_capsule_c",
+    "value": 10.0
+  },
+  {
+    "product": "canned_citrome_c",
+    "value": 10.0
+  },
+  {
+    "product": "steel_part",
+    "value": 3.0
+  },
+  {
+    "product": "amethyst_bottle",
+    "value": 2.0
+  },
+  {
+    "product": "ferrium_part",
+    "value": 1.0
+  },
+  {
+    "product": "amethyst_part",
+    "value": 1.0
+  },
+  {
+    "product": "origocrust",
+    "value": 1.0
+  }
+]

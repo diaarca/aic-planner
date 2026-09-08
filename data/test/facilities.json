@@ -1,0 +1,291 @@
+[
+  {
+    "name": "refining_unit",
+    "power": 5.0,
+    "width": 3,
+    "height": 3,
+    "inputs": [
+      {
+        "x": 0,
+        "y": 0,
+        "type": "solid"
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "type": "solid"
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "type": "solid"
+      }
+    ],
+    "outputs": [
+      {
+        "x": 0,
+        "y": 2,
+        "type": "solid"
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "type": "solid"
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "type": "solid"
+      }
+    ],
+    "recipes": [
+      {
+        "name": "refine_ferrium_ore",
+        "time": 2.0,
+        "ingredients": [
+          {
+            "item": "ferrium_ore",
+            "amount": 1.0
+          }
+        ],
+        "products": [
+          {
+            "item": "ferrium",
+            "amount": 1.0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "shredding_unit",
+    "power": 5.0,
+    "width": 3,
+    "height": 3,
+    "inputs": [
+      {
+        "x": 0,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "type": "product"
+      }
+    ],
+    "outputs": [
+      {
+        "x": 0,
+        "y": 2,
+        "type": "product"
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "type": "product"
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "type": "product"
+      }
+    ],
+    "recipes": [
+      {
+        "name": "shred_originium_ore",
+        "time": 2.0,
+        "ingredients": [
+          {
+            "item": "originium_ore",
+            "amount": 1.0
+          }
+        ],
+        "products": [
+          {
+            "item": "originium_powder",
+            "amount": 1.0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "fitting_unit",
+    "power": 20.0,
+    "width": 3,
+    "height": 3,
+    "inputs": [
+      {
+        "x": 0,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "type": "product"
+      }
+    ],
+    "outputs": [
+      {
+        "x": 0,
+        "y": 2,
+        "type": "product"
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "type": "product"
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "type": "product"
+      }
+    ],
+    "recipes": [
+      {
+        "name": "fit_ferrium",
+        "time": 2.0,
+        "ingredients": [
+          {
+            "item": "ferrium",
+            "amount": 1.0
+          }
+        ],
+        "products": [
+          {
+            "item": "ferrium_part",
+            "amount": 1.0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "packaging_unit",
+    "power": 20.0,
+    "width": 6,
+    "height": 4,
+    "inputs": [
+      {
+        "x": 0,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 3,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 4,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 5,
+        "y": 0,
+        "type": "product"
+      }
+    ],
+    "outputs": [
+      {
+        "x": 0,
+        "y": 3,
+        "type": "product"
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "type": "product"
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "type": "product"
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "type": "product"
+      },
+      {
+        "x": 4,
+        "y": 3,
+        "type": "product"
+      },
+      {
+        "x": 5,
+        "y": 3,
+        "type": "product"
+      }
+    ],
+    "recipes": [
+      {
+        "name": "produce_sc_valley_battery",
+        "time": 10.0,
+        "ingredients": [
+          {
+            "item": "ferrium_part",
+            "amount": 10.0
+          },
+          {
+            "item": "originium_powder",
+            "amount": 15.0
+          }
+        ],
+        "products": [
+          {
+            "item": "sc_valley_battery",
+            "amount": 1.0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "protocol_stash",
+    "power": 10.0,
+    "width": 3,
+    "height": 3,
+    "inputs": [
+      {
+        "x": 0,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 1,
+        "y": 0,
+        "type": "product"
+      },
+      {
+        "x": 2,
+        "y": 0,
+        "type": "product"
+      }
+    ]
+  }
+]

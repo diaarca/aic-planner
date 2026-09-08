@@ -1,0 +1,17 @@
+[
+  {
+    "fuel": "hc_valley_battery",
+    "power": 1100.0,
+    "duration": 40.0
+  },
+  {
+    "fuel": "sc_valley_battery",
+    "power": 420.0,
+    "duration": 40.0
+  },
+  {
+    "fuel": "lc_valley_battery",
+    "power": 220.0,
+    "duration": 40.0
+  }
+]

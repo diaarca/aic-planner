@@ -1,0 +1,14 @@
+[
+  {
+    "mineral": "originium_ore",
+    "limit": 560.0
+  },
+  {
+    "mineral": "amethyst_ore",
+    "limit": 240.0
+  },
+  {
+    "mineral": "ferrium_ore",
+    "limit": 1080.0
+  }
+]
