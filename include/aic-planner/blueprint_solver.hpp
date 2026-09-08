@@ -17,6 +17,7 @@ struct PlacedPort
     int fx = 0;
     int fy = 0;
     std::string type;
+    std::string item;
 };
 
 struct PlacedBlueprintEntity
@@ -56,6 +57,9 @@ struct BlueprintLayout
 
     void print() const;
 };
+
+int getFacilityColor(const std::string& type);
+int getItemColor(const std::string& item);
 
 class BlueprintSolver
 {

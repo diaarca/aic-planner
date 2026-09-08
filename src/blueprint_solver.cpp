@@ -50,7 +50,7 @@ bool BlueprintSolver::isMineral(const std::string& item) const
     return (findRecipeFor(item, dummy) == nullptr);
 }
 
-static int getFacilityColor(const std::string& type)
+int getFacilityColor(const std::string& type)
 {
     if (type == "unloader")
     {
@@ -91,6 +91,45 @@ static int getFacilityColor(const std::string& type)
 
     size_t hash = std::hash<std::string>{}(type);
     return 30 + static_cast<int>(hash % 190);
+}
+
+int getItemColor(const std::string& item)
+{
+    if (item == "ferrium_ore")
+        return 208; // Bright Orange
+    if (item == "ferrium")
+        return 214; // Amber / Ingot Gold
+    if (item == "ferrium_part")
+        return 48; // Emerald / Mint Green
+    if (item == "originium_ore")
+        return 39; // Deep Cyan
+    if (item == "originium_powder")
+        return 177; // Purple / Lavender
+    if (item == "sc_valley_battery")
+        return 220; // Bright Gold / Yellow
+    if (item == "hc_valley_battery")
+        return 226; // Vivid Yellow
+    if (item == "lc_valley_battery")
+        return 214; // Amber
+    if (item == "amethyst_ore")
+        return 141; // Amethyst Violet
+    if (item == "amethyst_part")
+        return 147; // Light Violet
+    if (item == "amethyst_bottle")
+        return 219; // Pink / Rose
+    if (item == "steel_part")
+        return 252; // Light Silver
+    if (item == "origocrust")
+        return 180; // Tan
+    if (item.rfind("canned_citrome", 0) == 0)
+        return 215; // Peach
+    if (item.rfind("buck_capsule", 0) == 0)
+        return 81; // Sky Blue
+
+    // Fallback: deterministic bright 256 color palette
+    size_t hash = std::hash<std::string>{}(item);
+    static const int palette[] = {45, 51, 82, 118, 154, 190, 208, 214, 220, 226, 201, 165, 171};
+    return palette[hash % (sizeof(palette) / sizeof(palette[0]))];
 }
 
 static std::string getFacilityCode(const std::string& type,
@@ -199,6 +238,10 @@ void BlueprintLayout::print() const
                 {
                     if (p.x == cur_x && p.y == cur_y)
                     {
+                        if (!p.item.empty())
+                        {
+                            ci.fg = getItemColor(p.item);
+                        }
                         if (p.is_input)
                         {
                             // Input arrow enters the facility
@@ -241,7 +284,27 @@ void BlueprintLayout::print() const
 
         CellInfo ci;
         ci.bg = -1;
-        ci.fg = 220; // Amber yellow
+
+        std::string item = "";
+        auto it_item = conveyor_items.find(cell);
+        if (it_item != conveyor_items.end())
+        {
+            item = it_item->second;
+        }
+
+        if ((mask & CONV_NORTH) && (mask & CONV_SOUTH) &&
+            (mask & CONV_EAST) && (mask & CONV_WEST))
+        {
+            ci.fg = 231; // Bright white for 4-way crossings
+        }
+        else if (!item.empty())
+        {
+            ci.fg = getItemColor(item);
+        }
+        else
+        {
+            ci.fg = 220; // Default gold/yellow
+        }
 
         std::string sym = "══";
         if (mask == (CONV_NORTH | CONV_SOUTH))
@@ -339,8 +402,9 @@ void BlueprintLayout::print() const
                 }
                 else
                 {
-                    // Conveyor tile without background
-                    std::cout << "\033[1;33m" << it->second.text << "\033[0m";
+                    // Conveyor tile with item color
+                    std::cout << "\033[38;5;" << it->second.fg << "m"
+                              << it->second.text << "\033[0m";
                 }
             }
             else
@@ -388,8 +452,26 @@ void BlueprintLayout::print() const
         }
         std::cout << "\n";
     }
-    std::cout << "  \033[1;33m══\033[0m Conveyors | Turns: \033[1;33m╔═ ╗  ╚═ ╝ \033[0m| Crossing: \033[1;33m╬═\033[0m\n";
-    std::cout << "  Port Arrows: \033[1m▲ ▼ ► ◄\033[0m (Output = exit facility, Input = enter facility)\n";
+
+    std::set<std::string> unique_items;
+    for (const auto& [cell, item] : conveyor_items)
+    {
+        if (!item.empty())
+            unique_items.insert(item);
+    }
+    if (!unique_items.empty())
+    {
+        std::cout << "  Conveyors: ";
+        for (const auto& item : unique_items)
+        {
+            int color = getItemColor(item);
+            std::cout << "\033[38;5;" << color << "m══ " << item
+                      << "\033[0m   ";
+        }
+        std::cout << "\n";
+    }
+    std::cout << "  Turns: ╔═ ╗ ╚═ ╝ | Crossing: \033[38;5;231m╬═\033[0m\n";
+    std::cout << "  Port Arrows: ▲ ▼ ► ◄ (Output = exit facility, Input = enter facility, colored by item)\n";
     std::cout << "\033[1;36m==================================================="
                  "=============================\033[0m\n";
 }
@@ -887,12 +969,13 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         }
     }
 
-    // Objective
-    model.Minimize(area * 100 + bbox_w * 10 + bbox_h * 10 + stream_dist);
+    // Objective: prioritize area, then compact depot-facing width, then height & wirelength
+    model.Minimize(area * 100 + bbox_w * 20 + bbox_h * 10 + stream_dist);
 
     SatParameters params;
     params.set_max_time_in_seconds(10.0);
     params.set_num_search_workers(8);
+    params.set_random_seed(42);
 
     const int max_conveyor_attempts = 50;
 
@@ -1158,6 +1241,24 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
                 }
 
                 layout.conveyor_items[pt] = s.item;
+            }
+
+            // Assign item to src and dst ports for color visualization
+            for (auto& p : layout.entities[s.src_entity].ports)
+            {
+                if (p.x == src_port.x && p.y == src_port.y)
+                {
+                    p.item = s.item;
+                    break;
+                }
+            }
+            for (auto& p : layout.entities[s.dst_entity].ports)
+            {
+                if (p.x == dst_port.x && p.y == dst_port.y)
+                {
+                    p.item = s.item;
+                    break;
+                }
             }
         }
 

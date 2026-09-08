@@ -689,6 +689,7 @@ void Solver::displayAreaLayouts()
         };
         std::map<std::pair<int, int>, CellInfo> grid;
         std::map<std::pair<int, int>, int> conveyor_cells;
+        std::map<std::pair<int, int>, std::string> conveyor_items;
 
         int active_count = 0;
         std::vector<std::string> placed_summary;
@@ -839,6 +840,10 @@ void Solver::displayAreaLayouts()
                         int port_gx = bx + rpx;
                         int port_gy = by + rpy;
                         CellInfo& pci = grid[{port_gx, port_gy}];
+                        if (!p.item.empty())
+                        {
+                            pci.fg = getItemColor(p.item);
+                        }
                         if (p.is_input)
                         {
                             if (rfy == 1)
@@ -917,6 +922,11 @@ void Solver::displayAreaLayouts()
                     }
 
                     conveyor_cells[{bx + rcx, by + rcy}] |= rmask;
+                    auto it_item = layout.conveyor_items.find(cell);
+                    if (it_item != layout.conveyor_items.end())
+                    {
+                        conveyor_items[{bx + rcx, by + rcy}] = it_item->second;
+                    }
                 }
             }
         }
@@ -941,7 +951,27 @@ void Solver::displayAreaLayouts()
 
             CellInfo ci;
             ci.bg = -1;
-            ci.fg = 220;
+
+            std::string item = "";
+            auto it_item = conveyor_items.find(cell);
+            if (it_item != conveyor_items.end())
+            {
+                item = it_item->second;
+            }
+
+            if ((mask & CONV_NORTH) && (mask & CONV_SOUTH) &&
+                (mask & CONV_EAST) && (mask & CONV_WEST))
+            {
+                ci.fg = 231; // Bright white for 4-way crossings
+            }
+            else if (!item.empty())
+            {
+                ci.fg = getItemColor(item);
+            }
+            else
+            {
+                ci.fg = 220;
+            }
 
             std::string sym = "══";
             if (mask == (CONV_NORTH | CONV_SOUTH))
@@ -1059,8 +1089,8 @@ void Solver::displayAreaLayouts()
                     }
                     else
                     {
-                        std::cout << "\033[1;33m" << it->second.text
-                                  << "\033[0m";
+                        std::cout << "\033[38;5;" << it->second.fg << "m"
+                                  << it->second.text << "\033[0m";
                     }
                 }
                 else
@@ -1102,8 +1132,26 @@ void Solver::displayAreaLayouts()
         std::cout << "  \033[48;5;177m  \033[0m [S ] Shredding Unit           | "
                   << "\033[48;5;33m  \033[0m [PK] Packaging Unit | "
                   << "\033[48;5;220m  \033[0m [PS] Protocol Stash\n";
-        std::cout << "  \033[1;33m══\033[0m Conveyor Belt (crossing: \033[1;33m╬═\033[0m, turns: \033[1;33m╔═ ╗  ╚═ ╝ \033[0m)\n";
-        std::cout << "  Port Arrows: \033[1m▲ ▼ ► ◄\033[0m (Output = exit facility, Input = enter facility)\n";
+
+        std::set<std::string> unique_area_items;
+        for (const auto& [cell, item] : conveyor_items)
+        {
+            if (!item.empty())
+                unique_area_items.insert(item);
+        }
+        if (!unique_area_items.empty())
+        {
+            std::cout << "  Conveyors: ";
+            for (const auto& item : unique_area_items)
+            {
+                int color = getItemColor(item);
+                std::cout << "\033[38;5;" << color << "m══ " << item
+                          << "\033[0m   ";
+            }
+            std::cout << "\n";
+        }
+        std::cout << "  Turns: ╔═ ╗ ╚═ ╝ | Crossing: \033[38;5;231m╬═\033[0m\n";
+        std::cout << "  Port Arrows: ▲ ▼ ► ◄ (Output = exit facility, Input = enter facility, colored by item)\n";
         std::cout << "\033[1;36m==================================================="
                      "=============================\033[0m\n\n";
     }
