@@ -646,31 +646,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
     std::vector<BlueprintEntityToPlace> entities;
     int next_id = 0;
 
-    // 1. Unloaders
-    int total_unloaders = 0;
-    std::map<std::string, std::vector<int>> unloader_ids_by_mineral;
-    for (const auto& [m, rate] : mineral_flows)
-    {
-        int num_u = static_cast<int>(std::ceil(rate / 2.0));
-        total_unloaders += num_u;
-        for (int u = 0; u < num_u; ++u)
-        {
-            BlueprintEntityToPlace ent;
-            ent.id = next_id++;
-            ent.type = "unloader";
-            ent.name = "unloader_" + m + "_" + std::to_string(u + 1);
-            ent.base_w = 3;
-            ent.base_h = 1;
-            ent.is_unloader = true;
-            ent.item_produced = m;
-            ent.outputs.push_back(
-                {1, 0, "product", 0, -1}); // middle output facing South
-            unloader_ids_by_mineral[m].push_back(ent.id);
-            entities.push_back(ent);
-        }
-    }
-
-    // 2. Intermediate facilities
+    // 1. Intermediate facilities
     std::map<std::string, std::vector<int>> fac_ids_by_produced_item;
     for (const auto& node : intermediate_nodes)
     {
@@ -693,7 +669,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         }
     }
 
-    // 3. Root facility
+    // 2. Root facility
     int root_entity_id = next_id++;
     {
         BlueprintEntityToPlace ent;
@@ -708,7 +684,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         entities.push_back(ent);
     }
 
-    // 4. Protocol Stash
+    // 3. Protocol Stash
     int stash_entity_id = next_id++;
     {
         BlueprintEntityToPlace ent;
@@ -730,12 +706,25 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
 
     auto add_stream = [&](int src, int dst, const std::string& item, double rate) {
         int out_p = used_out_port[src]++;
-        int in_p = used_in_port[dst]++;
+        int in_p;
+        // For 3x3 single-input facilities (refining, shredding, fitting), use center port (index 1)
+        if (dst < static_cast<int>(entities.size()) && entities[dst].inputs.size() == 3 && used_in_port[dst] == 0)
+        {
+            in_p = 1;
+            used_in_port[dst] = 2; // Reserve center port
+        }
+        else
+        {
+            in_p = used_in_port[dst]++;
+        }
         streams.push_back({src, out_p, dst, in_p, item, rate});
     };
 
-    // Connect unloaders to intermediate facilities consuming mineral
-    for (const auto& [m, u_ids] : unloader_ids_by_mineral)
+    // 4. Unloaders: Direct 1-to-1 unloader allocation to cap every facility at 100% efficiency
+    // Each unloader provides 0.5 items/s onto its output conveyor belt.
+    int total_unloaders = 0;
+    std::vector<int> unloader_entity_ids;
+    for (const auto& [m, total_rate] : mineral_flows)
     {
         std::vector<int> consumers;
         for (const auto& ent : entities)
@@ -753,43 +742,57 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
             }
         }
 
-        if (consumers.size() == 1)
+        for (int cid : consumers)
         {
-            add_stream(u_ids[0], consumers[0], m, 0.5);
-        }
-        else if (consumers.size() > 1)
-        {
-            // Insert 1x1 splitter for unloader
-            BlueprintEntityToPlace sp;
-            sp.id = next_id++;
-            sp.type = "splitter";
-            sp.name = "splitter_" + m;
-            sp.base_w = 1;
-            sp.base_h = 1;
-            sp.item_produced = m;
-            sp.item_consumed = m;
-            // Default 0°: input on North (entering South), outputs on South, West, East
-            sp.inputs.push_back({0, 0, "product", 0, 1});
-            sp.outputs.push_back({0, 0, "product", 0, -1});
-            sp.outputs.push_back({0, 0, "product", -1, 0});
-            sp.outputs.push_back({0, 0, "product", 1, 0});
-            entities.push_back(sp);
-
-            // Connect unloader to splitter
-            add_stream(u_ids[0], sp.id, m, static_cast<double>(consumers.size()) * 0.5);
-
-            // Connect splitter to each consumer
-            for (int cid : consumers)
+            double consumer_demand = 0.5;
+            if (cid == root_entity_id)
             {
-                add_stream(sp.id, cid, m, 0.5);
+                for (const auto& ing : root_recipe->ingredients)
+                {
+                    if (ing.item == m)
+                        consumer_demand = ing.amount / root_time;
+                }
+            }
+            else
+            {
+                for (const auto& node : intermediate_nodes)
+                {
+                    if (node.fac->name == entities[cid].type)
+                    {
+                        for (const auto& ing : node.recipe->ingredients)
+                        {
+                            if (ing.item == m)
+                                consumer_demand = ing.amount / node.recipe->time;
+                        }
+                    }
+                }
+            }
+
+            int needed_u = std::max(1, static_cast<int>(std::ceil(consumer_demand / 0.5 - 1e-6)));
+            for (int u = 0; u < needed_u; ++u)
+            {
+                BlueprintEntityToPlace ent;
+                ent.id = next_id++;
+                ent.type = "unloader";
+                ent.name = "unloader_" + m + "_" + std::to_string(total_unloaders + 1);
+                ent.base_w = 3;
+                ent.base_h = 1;
+                ent.is_unloader = true;
+                ent.item_produced = m;
+                ent.outputs.push_back({1, 0, "product", 0, -1}); // center output facing South
+                unloader_entity_ids.push_back(ent.id);
+                entities.push_back(ent);
+                total_unloaders++;
+
+                add_stream(ent.id, cid, m, std::min(0.5, consumer_demand));
             }
         }
     }
 
-    // Connect intermediate facilities to root facility or higher intermediate
+    // 5. Connect intermediate facilities
+    // Intermediate-to-intermediate (e.g. refining -> fitting)
     for (const auto& [item, f_ids] : fac_ids_by_produced_item)
     {
-        // Check if root facility consumes it
         bool consumed_by_root = false;
         for (const auto& ing : root_recipe->ingredients)
         {
@@ -799,16 +802,8 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
                 break;
             }
         }
-        if (consumed_by_root)
+        if (!consumed_by_root)
         {
-            for (int fid : f_ids)
-            {
-                add_stream(fid, root_entity_id, item, 0.5);
-            }
-        }
-        else
-        {
-            // Consumed by another intermediate
             std::vector<int> inter_consumers;
             for (const auto& ent : entities)
             {
@@ -832,6 +827,71 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
                 {
                     int fid = f_ids[c % f_ids.size()];
                     add_stream(fid, inter_consumers[c], item, 0.5);
+                }
+            }
+        }
+    }
+
+    // Intermediate-to-root: symmetrically order flank vs center items
+    std::vector<int> flank_fids;
+    std::vector<int> center_fids;
+    std::string flank_item, center_item;
+
+    for (const auto& [item, f_ids] : fac_ids_by_produced_item)
+    {
+        bool consumed_by_root = false;
+        for (const auto& ing : root_recipe->ingredients)
+        {
+            if (ing.item == item) { consumed_by_root = true; break; }
+        }
+        if (consumed_by_root)
+        {
+            if (f_ids.size() == 2)
+            {
+                flank_fids = f_ids;
+                flank_item = item;
+            }
+            else
+            {
+                center_fids = f_ids;
+                center_item = item;
+            }
+        }
+    }
+
+    if (!flank_fids.empty() && !center_fids.empty())
+    {
+        // Flank 1 (left) to port 0
+        int out_p0 = used_out_port[flank_fids[0]]++;
+        streams.push_back({flank_fids[0], out_p0, root_entity_id, 0, flank_item, 0.5});
+
+        // Center streams to ports 1, 2, 3...
+        for (size_t c = 0; c < center_fids.size(); ++c)
+        {
+            int cout_p = used_out_port[center_fids[c]]++;
+            int cin_p = static_cast<int>(c + 1);
+            streams.push_back({center_fids[c], cout_p, root_entity_id, cin_p, center_item, 0.5});
+        }
+
+        // Flank 2 (right) to rightmost port (e.g. port 5 on 6-port packaging unit)
+        int right_port = static_cast<int>(entities[root_entity_id].inputs.size()) - 1;
+        int out_p1 = used_out_port[flank_fids[1]]++;
+        streams.push_back({flank_fids[1], out_p1, root_entity_id, right_port, flank_item, 0.5});
+    }
+    else
+    {
+        for (const auto& [item, f_ids] : fac_ids_by_produced_item)
+        {
+            bool consumed_by_root = false;
+            for (const auto& ing : root_recipe->ingredients)
+            {
+                if (ing.item == item) { consumed_by_root = true; break; }
+            }
+            if (consumed_by_root)
+            {
+                for (int fid : f_ids)
+                {
+                    add_stream(fid, root_entity_id, item, 0.5);
                 }
             }
         }
@@ -906,45 +966,37 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         effW.push_back(w);
         effH.push_back(h);
 
-        // Dynamic aisle padding based on port density (Recommendation 2):
-        // pad = 0 for unloaders (dock directly to depot)
-        // pad = 1 for splitters
-        // pad = 3 for high-density multi-port machines (>= 4 inputs or outputs, e.g. packaging_unit)
-        // pad = 2 for standard 3x3 machines (ensuring at least 2 belt channels between machines)
-        int pad = 2;
-        if (entities[i].is_unloader)
-        {
-            pad = 0;
-        }
-        else if (entities[i].type == "splitter")
-        {
-            pad = 1;
-        }
-        else if (entities[i].inputs.size() >= 4 || entities[i].outputs.size() >= 4)
-        {
-            pad = 3;
-        }
         IntVar end_x = model.NewIntVar(Domain(0, grid_w));
         IntVar end_y = model.NewIntVar(Domain(0, grid_h));
-        model.AddEquality(end_x, posX[i] + w + pad);
-        model.AddEquality(end_y, posY[i] + h + pad);
+        model.AddEquality(end_x, posX[i] + w);
+        model.AddEquality(end_y, posY[i] + h);
 
-        intX.push_back(model.NewIntervalVar(posX[i], w + pad, end_x));
-        intY.push_back(model.NewIntervalVar(posY[i], h + pad, end_y));
+        intX.push_back(model.NewIntervalVar(posX[i], w, end_x));
+        intY.push_back(model.NewIntervalVar(posY[i], h, end_y));
     }
 
-    // Contiguous unloaders along top depot
+    // Contiguous unloaders along top depot with flexible slot assignment
     std::vector<int> unloader_indices;
     for (int i = 0; i < N; ++i)
     {
         if (entities[i].is_unloader)
             unloader_indices.push_back(i);
     }
-    for (size_t k = 1; k < unloader_indices.size(); ++k)
+    int K = static_cast<int>(unloader_indices.size());
+    if (K > 0)
     {
-        int prev_u = unloader_indices[k - 1];
-        int curr_u = unloader_indices[k];
-        model.AddEquality(posX[curr_u], posX[prev_u] + entities[prev_u].base_w);
+        std::vector<IntVar> unloader_slots;
+        for (int k = 0; k < K; ++k)
+        {
+            unloader_slots.push_back(
+                model.NewIntVar(Domain(0, K - 1)).WithName("u_slot_" + std::to_string(k)));
+        }
+        model.AddAllDifferent(unloader_slots);
+        for (int k = 0; k < K; ++k)
+        {
+            int u_idx = unloader_indices[k];
+            model.AddEquality(posX[u_idx], LinearExpr::Term(unloader_slots[k], 3));
+        }
     }
 
     // Non-overlapping
@@ -953,6 +1005,49 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
     {
         no_overlap.AddRectangle(intX[i], intY[i]);
     }
+
+    // Topological Tier 1: Primary mineral consumers form a contiguous row under unloaders
+    std::vector<int> primary_consumer_ids;
+    int primary_total_w = 0;
+    for (const auto& ent : entities)
+    {
+        if (!ent.is_unloader && ent.type != "protocol_stash" && ent.id != root_entity_id)
+        {
+            if (isMineral(ent.item_consumed))
+            {
+                primary_consumer_ids.push_back(ent.id);
+                primary_total_w += ent.base_w;
+            }
+        }
+    }
+
+    if (!primary_consumer_ids.empty() && primary_total_w <= grid_w)
+    {
+        IntVar tier1_y = model.NewIntVar(Domain(0, grid_h - 1)).WithName("tier1_y");
+        for (int cid : primary_consumer_ids)
+        {
+            model.AddEquality(posY[cid], tier1_y);
+            model.AddEquality(rotB[cid][2], 1); // rot 180: inputs North (facing unloaders), outputs South
+        }
+        for (int i = 0; i < N; ++i)
+        {
+            if (!entities[i].is_unloader &&
+                std::find(primary_consumer_ids.begin(), primary_consumer_ids.end(), i) ==
+                    primary_consumer_ids.end())
+            {
+                model.AddLessOrEqual(posY[i] + effH[i], tier1_y);
+            }
+        }
+    }
+
+    // Root packaging unit: inputs face North toward intermediate converters, outputs face South
+    if (entities[root_entity_id].type == "packaging_unit")
+    {
+        model.AddEquality(rotB[root_entity_id][2], 1); // rot 180: inputs North, outputs South
+    }
+
+    // Protocol stash is at or below root facility
+    model.AddLessOrEqual(posY[stash_entity_id], posY[root_entity_id]);
 
     // Port Access Tiles & Clearance
     struct PortAccessVar
@@ -1146,7 +1241,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
     }
 
     // Objective: prioritize compact bounding box and wirelength
-    model.Minimize(bbox_w * 50 + bbox_h * 50 + stream_dist * 5);
+    model.Minimize(bbox_w * 100 + bbox_h * 100 + stream_dist * 5);
 
     SatParameters params;
     params.set_max_time_in_seconds(2.0);
