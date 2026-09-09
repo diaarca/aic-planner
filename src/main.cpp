@@ -13,6 +13,7 @@
 
 int main(int argc, char* argv[])
 {
+    std::cout << std::unitbuf;
     if (argc < 2)
     {
         std::cerr << "Usage: " << argv[0] << " <data_folder_path>" << std::endl;

@@ -962,7 +962,7 @@ void Solver::displayAreaLayouts()
             if ((mask & CONV_NORTH) && (mask & CONV_SOUTH) &&
                 (mask & CONV_EAST) && (mask & CONV_WEST))
             {
-                ci.fg = 231; // Bright white for 4-way crossings
+                ci.fg = 201; // Bright Magenta / Hot Pink for 4-way bridge crossings
             }
             else if (!item.empty())
             {
@@ -1126,12 +1126,14 @@ void Solver::displayAreaLayouts()
         std::cout << "\033[1;37m  AREA FACILITY LEGEND (Unified Colors)\033[0m\n";
         std::cout << "\033[1;36m---------------------------------------------------"
                      "-----------------------------\033[0m\n";
-        std::cout << "  \033[48;5;208m  \033[0m [U ] Unloader (Depot Docking) | "
-                  << "\033[48;5;39m  \033[0m [R ] Refining Unit | "
+        std::cout << "  \033[48;5;154m  \033[0m [U ] Unloader (Depot Docking) | "
+                  << "\033[48;5;208m  \033[0m [R ] Refining Unit | "
                   << "\033[48;5;48m  \033[0m [F ] Fitting Unit\n";
         std::cout << "  \033[48;5;177m  \033[0m [S ] Shredding Unit           | "
                   << "\033[48;5;33m  \033[0m [PK] Packaging Unit | "
                   << "\033[48;5;220m  \033[0m [PS] Protocol Stash\n";
+        std::cout << "  \033[48;5;51m  \033[0m [SP] Splitter                 | "
+                  << "\033[38;5;201m╬═\033[0m [BR] Bridge Crossing\n";
 
         std::set<std::string> unique_area_items;
         for (const auto& [cell, item] : conveyor_items)
@@ -1150,7 +1152,7 @@ void Solver::displayAreaLayouts()
             }
             std::cout << "\n";
         }
-        std::cout << "  Turns: ╔═ ╗ ╚═ ╝ | Crossing: \033[38;5;231m╬═\033[0m\n";
+        std::cout << "  Turns: ╔═ ╗ ╚═ ╝ | Crossing (Bridge): \033[38;5;201m╬═\033[0m\n";
         std::cout << "  Port Arrows: ▲ ▼ ► ◄ (Output = exit facility, Input = enter facility, colored by item)\n";
         std::cout << "\033[1;36m==================================================="
                      "=============================\033[0m\n\n";

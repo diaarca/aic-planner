@@ -1,9 +1,12 @@
 #include "blueprint_solver.hpp"
 #include "ortools/sat/cp_model.h"
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <queue>
+#include <random>
 
 using namespace operations_research;
 using namespace operations_research::sat;
@@ -76,6 +79,14 @@ int getFacilityColor(const std::string& type)
     {
         return 220; // Bright Gold / Yellow
     }
+    if (type == "splitter")
+    {
+        return 51; // Bright Cyan
+    }
+    if (type == "bridge")
+    {
+        return 201; // Bright Magenta / Hot Pink
+    }
     if (type == "moulding_unit")
         return 205;
     if (type == "seed_picking_unit")
@@ -137,6 +148,8 @@ static std::string getFacilityCode(const std::string& type,
 {
     if (type == "unloader")
         return "U" + std::to_string(instance_idx + 1);
+    if (type == "splitter")
+        return "SP";
     if (type == "refining_unit")
         return "R" + std::to_string(instance_idx + 1);
     if (type == "fitting_unit")
@@ -150,7 +163,7 @@ static std::string getFacilityCode(const std::string& type,
     if (type == "moulding_unit")
         return "ML";
     if (type == "seed_picking_unit")
-        return "SP";
+        return "Sd";
     if (type == "planting_unit")
         return "PL";
     if (type == "filling_unit")
@@ -238,6 +251,25 @@ void BlueprintLayout::print() const
                 {
                     if (p.x == cur_x && p.y == cur_y)
                     {
+                        if (e.type == "splitter")
+                        {
+                            ci.bg = e.color_code;
+                            ci.fg = 16;
+                            if (p.is_input)
+                            {
+                                if (p.fy == 1)
+                                    ci.text = "▼ ";
+                                else if (p.fy == -1)
+                                    ci.text = "▲ ";
+                                else if (p.fx == 1)
+                                    ci.text = "◄ ";
+                                else if (p.fx == -1)
+                                    ci.text = "► ";
+                                break;
+                            }
+                            continue;
+                        }
+
                         if (!p.item.empty())
                         {
                             ci.fg = getItemColor(p.item);
@@ -295,7 +327,7 @@ void BlueprintLayout::print() const
         if ((mask & CONV_NORTH) && (mask & CONV_SOUTH) &&
             (mask & CONV_EAST) && (mask & CONV_WEST))
         {
-            ci.fg = 231; // Bright white for 4-way crossings
+            ci.fg = 201; // Bright Magenta / Hot Pink for 4-way bridge crossings
         }
         else if (!item.empty())
         {
@@ -470,7 +502,7 @@ void BlueprintLayout::print() const
         }
         std::cout << "\n";
     }
-    std::cout << "  Turns: ╔═ ╗ ╚═ ╝ | Crossing: \033[38;5;231m╬═\033[0m\n";
+    std::cout << "  Turns: ╔═ ╗ ╚═ ╝ | Crossing (Bridge): \033[38;5;201m╬═\033[0m\n";
     std::cout << "  Port Arrows: ▲ ▼ ► ◄ (Output = exit facility, Input = enter facility, colored by item)\n";
     std::cout << "\033[1;36m==================================================="
                  "=============================\033[0m\n";
@@ -705,20 +737,51 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
     // Connect unloaders to intermediate facilities consuming mineral
     for (const auto& [m, u_ids] : unloader_ids_by_mineral)
     {
-        for (auto& ent : entities)
+        std::vector<int> consumers;
+        for (const auto& ent : entities)
         {
-            if (ent.item_consumed == m && !ent.is_unloader)
+            if (ent.item_consumed == m && !ent.is_unloader && ent.type != "splitter")
             {
-                int u_id = u_ids[0];
-                add_stream(u_id, ent.id, m, 0.5);
+                consumers.push_back(ent.id);
             }
         }
-        // Also check root facility
         for (const auto& ing : root_recipe->ingredients)
         {
             if (ing.item == m)
             {
-                add_stream(u_ids[0], root_entity_id, m, 0.5);
+                consumers.push_back(root_entity_id);
+            }
+        }
+
+        if (consumers.size() == 1)
+        {
+            add_stream(u_ids[0], consumers[0], m, 0.5);
+        }
+        else if (consumers.size() > 1)
+        {
+            // Insert 1x1 splitter for unloader
+            BlueprintEntityToPlace sp;
+            sp.id = next_id++;
+            sp.type = "splitter";
+            sp.name = "splitter_" + m;
+            sp.base_w = 1;
+            sp.base_h = 1;
+            sp.item_produced = m;
+            sp.item_consumed = m;
+            // Default 0°: input on North (entering South), outputs on South, West, East
+            sp.inputs.push_back({0, 0, "product", 0, 1});
+            sp.outputs.push_back({0, 0, "product", 0, -1});
+            sp.outputs.push_back({0, 0, "product", -1, 0});
+            sp.outputs.push_back({0, 0, "product", 1, 0});
+            entities.push_back(sp);
+
+            // Connect unloader to splitter
+            add_stream(u_ids[0], sp.id, m, static_cast<double>(consumers.size()) * 0.5);
+
+            // Connect splitter to each consumer
+            for (int cid : consumers)
+            {
+                add_stream(sp.id, cid, m, 0.5);
             }
         }
     }
@@ -746,12 +809,29 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         else
         {
             // Consumed by another intermediate
-            for (auto& ent : entities)
+            std::vector<int> inter_consumers;
+            for (const auto& ent : entities)
             {
                 if (ent.item_consumed == item && ent.id != root_entity_id &&
-                    !ent.is_unloader)
+                    !ent.is_unloader && ent.type != "splitter")
                 {
-                    add_stream(f_ids[0], ent.id, item, 0.5);
+                    inter_consumers.push_back(ent.id);
+                }
+            }
+            if (f_ids.size() >= inter_consumers.size())
+            {
+                for (size_t f = 0; f < f_ids.size(); ++f)
+                {
+                    int cid = inter_consumers[f % inter_consumers.size()];
+                    add_stream(f_ids[f], cid, item, 0.5);
+                }
+            }
+            else
+            {
+                for (size_t c = 0; c < inter_consumers.size(); ++c)
+                {
+                    int fid = f_ids[c % f_ids.size()];
+                    add_stream(fid, inter_consumers[c], item, 0.5);
                 }
             }
         }
@@ -826,13 +906,45 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         effW.push_back(w);
         effH.push_back(h);
 
+        // Dynamic aisle padding based on port density (Recommendation 2):
+        // pad = 0 for unloaders (dock directly to depot)
+        // pad = 1 for splitters
+        // pad = 3 for high-density multi-port machines (>= 4 inputs or outputs, e.g. packaging_unit)
+        // pad = 2 for standard 3x3 machines (ensuring at least 2 belt channels between machines)
+        int pad = 2;
+        if (entities[i].is_unloader)
+        {
+            pad = 0;
+        }
+        else if (entities[i].type == "splitter")
+        {
+            pad = 1;
+        }
+        else if (entities[i].inputs.size() >= 4 || entities[i].outputs.size() >= 4)
+        {
+            pad = 3;
+        }
         IntVar end_x = model.NewIntVar(Domain(0, grid_w));
         IntVar end_y = model.NewIntVar(Domain(0, grid_h));
-        model.AddEquality(end_x, posX[i] + w);
-        model.AddEquality(end_y, posY[i] + h);
+        model.AddEquality(end_x, posX[i] + w + pad);
+        model.AddEquality(end_y, posY[i] + h + pad);
 
-        intX.push_back(model.NewIntervalVar(posX[i], w, end_x));
-        intY.push_back(model.NewIntervalVar(posY[i], h, end_y));
+        intX.push_back(model.NewIntervalVar(posX[i], w + pad, end_x));
+        intY.push_back(model.NewIntervalVar(posY[i], h + pad, end_y));
+    }
+
+    // Contiguous unloaders along top depot
+    std::vector<int> unloader_indices;
+    for (int i = 0; i < N; ++i)
+    {
+        if (entities[i].is_unloader)
+            unloader_indices.push_back(i);
+    }
+    for (size_t k = 1; k < unloader_indices.size(); ++k)
+    {
+        int prev_u = unloader_indices[k - 1];
+        int curr_u = unloader_indices[k];
+        model.AddEquality(posX[curr_u], posX[prev_u] + entities[prev_u].base_w);
     }
 
     // Non-overlapping
@@ -908,6 +1020,35 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
 
                     model.AddBoolOr({left, right, below, above});
                 }
+
+                // For multi-input facilities (e.g. packaging_unit), also ensure the 2nd tile in front is clear
+                if (is_input && ent.inputs.size() > 2)
+                {
+                    IntVar ax2 = model.NewIntVar(Domain(0, grid_w - 1));
+                    IntVar ay2 = model.NewIntVar(Domain(0, grid_h - 1));
+                    model.AddEquality(ax2, posX[i] + px + 2 * fx);
+                    model.AddEquality(ay2, posY[i] + py + 2 * fy);
+
+                    for (int j = 0; j < N; ++j)
+                    {
+                        if (j == i)
+                            continue;
+                        BoolVar left2 = model.NewBoolVar();
+                        BoolVar right2 = model.NewBoolVar();
+                        BoolVar below2 = model.NewBoolVar();
+                        BoolVar above2 = model.NewBoolVar();
+
+                        model.AddLessOrEqual(ax2, posX[j] - 1).OnlyEnforceIf(left2);
+                        model.AddGreaterOrEqual(ax2, posX[j] + effW[j])
+                            .OnlyEnforceIf(right2);
+                        model.AddLessOrEqual(ay2, posY[j] - 1).OnlyEnforceIf(below2);
+                        model.AddGreaterOrEqual(ay2, posY[j] + effH[j])
+                            .OnlyEnforceIf(above2);
+
+                        model.AddBoolOr({left2, right2, below2, above2});
+                    }
+                }
+
                 port_accesses.push_back(
                     {i, is_input, static_cast<int>(p), ax, ay});
             }
@@ -936,27 +1077,43 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
     model.AddEquality(bbox_w, max_x - min_x);
     model.AddEquality(bbox_h, max_y - min_y);
 
-    IntVar area = model.NewIntVar(Domain(1, grid_w * grid_h)).WithName("area");
-    model.AddMultiplicationEquality(area, bbox_w, bbox_h);
+    int total_fac_area = 0;
+    for (const auto& ent : entities)
+        total_fac_area += ent.base_w * ent.base_h;
+    int max_dim = std::min(grid_w, std::max(total_unloaders * 3 + 8, static_cast<int>(std::ceil(std::sqrt(total_fac_area) * 2.3))));
+    if (max_dim < grid_w)
+    {
+        model.AddLessOrEqual(bbox_w, max_dim);
+        model.AddLessOrEqual(bbox_h, max_dim);
+    }
 
     // Minimize Manhattan conveyor distances as regularization
-    LinearExpr stream_dist;
-    for (const auto& s : streams)
+    auto find_access = [&](int ent_id, bool is_in,
+                           int p_idx) -> const PortAccessVar*
     {
-        auto find_access = [&](int ent_id, bool is_in,
-                               int p_idx) -> const PortAccessVar*
+        for (const auto& pa : port_accesses)
         {
-            for (const auto& pa : port_accesses)
+            if (pa.entity_id == ent_id && pa.is_input == is_in &&
+                pa.port_idx == p_idx)
             {
-                if (pa.entity_id == ent_id && pa.is_input == is_in &&
-                    pa.port_idx == p_idx)
-                {
-                    return &pa;
-                }
+                return &pa;
             }
-            return nullptr;
-        };
+        }
+        return nullptr;
+    };
 
+    struct ActivePort
+    {
+        int stream_idx;
+        IntVar ax;
+        IntVar ay;
+    };
+    std::vector<ActivePort> active_ports;
+
+    LinearExpr stream_dist;
+    for (size_t s_idx = 0; s_idx < streams.size(); ++s_idx)
+    {
+        const auto& s = streams[s_idx];
         const auto* src_pa = find_access(s.src_entity, false, s.src_port_idx);
         const auto* dst_pa = find_access(s.dst_entity, true, s.dst_port_idx);
         if (src_pa && dst_pa)
@@ -966,14 +1123,33 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
             model.AddAbsEquality(dx, src_pa->ax - dst_pa->ax);
             model.AddAbsEquality(dy, src_pa->ay - dst_pa->ay);
             stream_dist += dx + dy;
+
+            active_ports.push_back({static_cast<int>(s_idx), src_pa->ax, src_pa->ay});
+            active_ports.push_back({static_cast<int>(s_idx), dst_pa->ax, dst_pa->ay});
         }
     }
 
-    // Objective: prioritize area, then compact depot-facing width, then height & wirelength
-    model.Minimize(area * 100 + bbox_w * 20 + bbox_h * 10 + stream_dist);
+    // Active ports of distinct streams must not occupy the exact same access tile
+    for (size_t i = 0; i < active_ports.size(); ++i)
+    {
+        for (size_t j = i + 1; j < active_ports.size(); ++j)
+        {
+            if (active_ports[i].stream_idx != active_ports[j].stream_idx)
+            {
+                BoolVar diff_x = model.NewBoolVar();
+                BoolVar diff_y = model.NewBoolVar();
+                model.AddNotEqual(active_ports[i].ax, active_ports[j].ax).OnlyEnforceIf(diff_x);
+                model.AddNotEqual(active_ports[i].ay, active_ports[j].ay).OnlyEnforceIf(diff_y);
+                model.AddBoolOr({diff_x, diff_y});
+            }
+        }
+    }
+
+    // Objective: prioritize compact bounding box and wirelength
+    model.Minimize(bbox_w * 50 + bbox_h * 50 + stream_dist * 5);
 
     SatParameters params;
-    params.set_max_time_in_seconds(10.0);
+    params.set_max_time_in_seconds(2.0);
     params.set_num_search_workers(8);
     params.set_random_seed(42);
 
@@ -981,6 +1157,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
 
     for (int attempt = 1; attempt <= max_conveyor_attempts; ++attempt)
     {
+        params.set_random_seed(42 + attempt * 17);
         Model cp_model;
         cp_model.Add(NewSatParameters(params));
         CpSolverResponse response = SolveCpModel(model.Build(), &cp_model);
@@ -1057,7 +1234,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
                     fy = p.fx;
                 }
                 pe.ports.push_back(
-                    {pe.x + px, pe.y + py, is_in, fx, fy, p.type});
+                    {pe.x + px, pe.y + py, is_in, fx, fy, p.type, ""});
             };
 
             for (const auto& in_p : entities[i].inputs)
@@ -1069,7 +1246,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         }
 
         // -------------------------------------------------------------
-        // Conveyor Routing & Feasibility Check
+        // PathFinder Negotiated Congestion Conveyor Router
         // -------------------------------------------------------------
         layout.conveyor_cells.clear();
         layout.conveyor_items.clear();
@@ -1100,7 +1277,84 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
             return 0;
         };
 
-        std::vector<int> failed_stream_indices;
+        auto get_dir_from_delta = [](int dx, int dy) -> int
+        {
+            if (dy == 1)
+                return 0; // North
+            if (dy == -1)
+                return 1; // South
+            if (dx == 1)
+                return 2; // East
+            if (dx == -1)
+                return 3; // West
+            return -1;
+        };
+
+        struct StreamEndpoints
+        {
+            PlacedPort src_port;
+            PlacedPort dst_port;
+            std::pair<int, int> start_pt;
+            std::pair<int, int> target_pt;
+            int dir_from_src_port;
+            int dir_to_dst_port;
+            bool valid;
+        };
+
+        std::vector<StreamEndpoints> stream_endpoints(streams.size());
+        std::set<std::pair<int, int>> all_port_access_cells;
+
+        // Planar Pin Matching / Port Order Normalization (Recommendation 3):
+        // Dynamically sort input ports along their primary axis (X or Y) and
+        // match them to incoming streams sorted by their source entity positions.
+        std::map<int, std::vector<size_t>> streams_by_dst;
+        for (size_t s_idx = 0; s_idx < streams.size(); ++s_idx)
+        {
+            streams_by_dst[streams[s_idx].dst_entity].push_back(s_idx);
+        }
+
+        for (auto& [dst_id, s_indices] : streams_by_dst)
+        {
+            if (dst_id < 0 || dst_id >= static_cast<int>(layout.entities.size()) || s_indices.size() <= 1)
+                continue;
+
+            const auto& pe_dst = layout.entities[dst_id];
+            std::vector<std::pair<PlacedPort, size_t>> input_ports_with_idx;
+            for (size_t p = 0; p < pe_dst.ports.size(); ++p)
+            {
+                if (pe_dst.ports[p].is_input)
+                    input_ports_with_idx.push_back({pe_dst.ports[p], p});
+            }
+            if (input_ports_with_idx.size() < s_indices.size())
+                continue;
+
+            // Determine primary axis of input port bank (horizontal or vertical)
+            bool is_horizontal = true;
+            if (input_ports_with_idx.size() >= 2)
+            {
+                is_horizontal = (std::abs(input_ports_with_idx.back().first.x - input_ports_with_idx.front().first.x) >=
+                                 std::abs(input_ports_with_idx.back().first.y - input_ports_with_idx.front().first.y));
+            }
+
+            // Sort input ports along the axis
+            std::sort(input_ports_with_idx.begin(), input_ports_with_idx.end(),
+                      [&](const auto& a, const auto& b) {
+                          return is_horizontal ? (a.first.x < b.first.x) : (a.first.y < b.first.y);
+                      });
+
+            // Sort incoming streams along the same axis based on source machine center
+            std::sort(s_indices.begin(), s_indices.end(), [&](size_t a, size_t b) {
+                const auto& src_a = layout.entities[streams[a].src_entity];
+                const auto& src_b = layout.entities[streams[b].src_entity];
+                return is_horizontal ? (src_a.x < src_b.x) : (src_a.y < src_b.y);
+            });
+
+            // Assign destination port index directly to match physical ordering
+            for (size_t k = 0; k < s_indices.size(); ++k)
+            {
+                streams[s_indices[k]].dst_port_idx = static_cast<int>(input_ports_with_idx[k].second);
+            }
+        }
 
         for (size_t s_idx = 0; s_idx < streams.size(); ++s_idx)
         {
@@ -1108,6 +1362,7 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
             if (s.src_entity >= static_cast<int>(layout.entities.size()) ||
                 s.dst_entity >= static_cast<int>(layout.entities.size()))
             {
+                stream_endpoints[s_idx].valid = false;
                 continue;
             }
 
@@ -1119,7 +1374,10 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
                     src_outputs.push_back(p);
             }
             if (src_outputs.empty())
+            {
+                stream_endpoints[s_idx].valid = false;
                 continue;
+            }
             const auto& src_port =
                 src_outputs[s.src_port_idx % src_outputs.size()];
 
@@ -1131,7 +1389,10 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
                     dst_inputs.push_back(p);
             }
             if (dst_inputs.empty())
+            {
+                stream_endpoints[s_idx].valid = false;
                 continue;
+            }
             const auto& dst_port =
                 dst_inputs[s.dst_port_idx % dst_inputs.size()];
 
@@ -1140,134 +1401,536 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
             int dst_ax = dst_port.x + dst_port.fx;
             int dst_ay = dst_port.y + dst_port.fy;
 
-            std::queue<std::pair<int, int>> q;
-            std::map<std::pair<int, int>, std::pair<int, int>> came_from;
-            std::set<std::pair<int, int>> visited;
+            int d_from_src = get_dir_from_delta(src_port.fx, src_port.fy);
+            int d_to_dst = get_dir_from_delta(-dst_port.fx, -dst_port.fy);
 
-            std::pair<int, int> start_pt = {src_ax, src_ay};
-            std::pair<int, int> target_pt = {dst_ax, dst_ay};
+            stream_endpoints[s_idx] = {src_port,
+                                       dst_port,
+                                       {src_ax, src_ay},
+                                       {dst_ax, dst_ay},
+                                       d_from_src,
+                                       d_to_dst,
+                                       true};
+            all_port_access_cells.insert({src_ax, src_ay});
+            all_port_access_cells.insert({dst_ax, dst_ay});
+        }
 
-            q.push(start_pt);
-            visited.insert(start_pt);
+        struct PathNode
+        {
+            int x, y, layer; // 0: Ground, 1: Overpass Bridge
+        };
 
-            bool found = (start_pt == target_pt);
-            while (!q.empty() && !found)
+        struct OccSegment
+        {
+            int stream_idx;
+            int dir_in;
+            int dir_out;
+            bool is_straight;
+        };
+
+        const int W = grid_w;
+        const int H = grid_h;
+        // cell_occ[W][H][2]: layer 0 = Ground, layer 1 = Bridge
+        std::vector<std::vector<std::vector<std::vector<OccSegment>>>> cell_occ(
+            W, std::vector<std::vector<std::vector<OccSegment>>>(
+                   H, std::vector<std::vector<OccSegment>>(2)));
+        std::vector<std::vector<int>> cell_history_penalty(
+            W, std::vector<int>(H, 0));
+
+        auto is_conflicted = [&](int x, int y) -> bool
+        {
+            const auto& occ0 = cell_occ[x][y][0];
+            const auto& occ1 = cell_occ[x][y][1];
+            if (occ0.size() > 1 || occ1.size() > 1)
+                return true;
+            if (occ0.empty() || occ1.empty())
+                return false;
+            // Both layers have 1 stream: valid if and only if both are straight and perpendicular
+            if (!occ0[0].is_straight || !occ1[0].is_straight)
+                return true;
+            bool v0 = (occ0[0].dir_in == 0 || occ0[0].dir_in == 1);
+            bool v1 = (occ1[0].dir_in == 0 || occ1[0].dir_in == 1);
+            return (v0 == v1); // If same orientation, conflicted! If different, valid perpendicular bridge
+        };
+
+        std::vector<std::vector<PathNode>> stream_paths(streams.size());
+
+        auto add_path_to_occ = [&](int s_idx)
+        {
+            const auto& path = stream_paths[s_idx];
+            if (path.empty())
+                return;
+            int m = static_cast<int>(path.size()) - 1;
+            int d_from_src = stream_endpoints[s_idx].dir_from_src_port;
+            int d_to_dst = stream_endpoints[s_idx].dir_to_dst_port;
+
+            for (int k = 0; k <= m; ++k)
             {
-                auto curr = q.front();
-                q.pop();
+                int d_in = (k == 0) ? d_from_src
+                                    : get_dir_from_delta(
+                                          path[k].x - path[k - 1].x,
+                                          path[k].y - path[k - 1].y);
+                int d_out = (k == m) ? d_to_dst
+                                     : get_dir_from_delta(
+                                           path[k + 1].x - path[k].x,
+                                           path[k + 1].y - path[k].y);
+                bool straight = (d_in == d_out);
+                cell_occ[path[k].x][path[k].y][path[k].layer].push_back(
+                    {s_idx, d_in, d_out, straight});
+            }
+        };
 
-                if (curr == target_pt)
+        auto remove_path_from_occ = [&](int s_idx)
+        {
+            const auto& path = stream_paths[s_idx];
+            for (const auto& node : path)
+            {
+                auto& occ = cell_occ[node.x][node.y][node.layer];
+                occ.erase(std::remove_if(occ.begin(), occ.end(),
+                                         [&](const OccSegment& seg) {
+                                             return seg.stream_idx == s_idx;
+                                         }),
+                          occ.end());
+            }
+        };
+
+        auto route_stream = [&](int s_idx, double p_k) -> bool
+        {
+            const auto& ep = stream_endpoints[s_idx];
+            if (!ep.valid)
+                return false;
+
+            std::pair<int, int> start_pt = ep.start_pt;
+            std::pair<int, int> target_pt = ep.target_pt;
+            int d_from_src = ep.dir_from_src_port;
+            int d_to_dst = ep.dir_to_dst_port;
+
+            if (start_pt == target_pt)
+            {
+                stream_paths[s_idx] = {{start_pt.first, start_pt.second, 0}};
+                add_path_to_occ(s_idx);
+                return true;
+            }
+
+            struct QNode
+            {
+                int cost;
+                int x, y, layer, dir;
+                bool operator>(const QNode& other) const
                 {
-                    found = true;
-                    break;
+                    return cost > other.cost;
                 }
+            };
 
-                const int dxy[4][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
-                for (int d = 0; d < 4; ++d)
+            const int INF = 1e9;
+            // dist[W][H][2][4]
+            std::vector<std::vector<std::vector<std::vector<int>>>> dist(
+                W, std::vector<std::vector<std::vector<int>>>(
+                       H, std::vector<std::vector<int>>(
+                              2, std::vector<int>(4, INF))));
+
+            struct Parent
+            {
+                int x, y, layer, dir;
+            };
+            std::vector<std::vector<std::vector<std::vector<Parent>>>> parent(
+                W, std::vector<std::vector<std::vector<Parent>>>(
+                       H, std::vector<std::vector<Parent>>(
+                              2, std::vector<Parent>(4, {-1, -1, -1, -1}))));
+
+            std::priority_queue<QNode, std::vector<QNode>, std::greater<QNode>> pq;
+
+            dist[start_pt.first][start_pt.second][0][d_from_src] = 0;
+            pq.push({0, start_pt.first, start_pt.second, 0, d_from_src});
+
+            const int dxy[4][2] = {
+                {0, 1}, {0, -1}, {1, 0}, {-1, 0}}; // 0: N, 1: S, 2: E, 3: W
+
+            int best_target_cost = INF;
+            int best_target_dir = -1;
+
+            while (!pq.empty())
+            {
+                auto [c, x, y, layer, dir] = pq.top();
+                pq.pop();
+
+                if (c > dist[x][y][layer][dir])
+                    continue;
+                if (c >= best_target_cost)
+                    break;
+
+                // Docking at target: must be on Ground (layer 0)
+                if (x == target_pt.first && y == target_pt.second && layer == 0)
                 {
-                    int nx = curr.first + dxy[d][0];
-                    int ny = curr.second + dxy[d][1];
-                    std::pair<int, int> next_pt = {nx, ny};
-
-                    if (nx < 0 || nx >= grid_w || ny < 0 || ny >= grid_h)
-                        continue;
-                    if (facility_cells.count(next_pt))
-                        continue; // No overlap with facilities
-                    if (visited.count(next_pt))
-                        continue;
-
-                    visited.insert(next_pt);
-                    came_from[next_pt] = curr;
-                    if (next_pt == target_pt)
+                    int turn_p = (dir != d_to_dst) ? 20 : 0;
+                    int total_c = c + turn_p;
+                    if (total_c < best_target_cost)
                     {
-                        found = true;
-                        break;
+                        best_target_cost = total_c;
+                        best_target_dir = dir;
                     }
-                    q.push(next_pt);
+                    continue;
+                }
+
+                if (layer == 0)
+                {
+                    // 1. Move on Ground (Layer 0)
+                    for (int next_d = 0; next_d < 4; ++next_d)
+                    {
+                        if (next_d == (dir ^ 1))
+                            continue; // Cannot 180 reverse
+
+                        int nx = x + dxy[next_d][0];
+                        int ny = y + dxy[next_d][1];
+
+                        if (nx < 0 || nx >= W || ny < 0 || ny >= H)
+                            continue;
+                        if (facility_cells.count({nx, ny}))
+                            continue;
+
+                        int turn_cost = (next_d != dir) ? 15 : 0;
+                        int h_cost = cell_history_penalty[nx][ny];
+
+                        int occ_cost = 0;
+                        const auto& occ0 = cell_occ[nx][ny][0];
+                        if (!occ0.empty())
+                        {
+                            occ_cost = static_cast<int>((1000.0 + 50.0 * h_cost) * p_k);
+                        }
+                        if (all_port_access_cells.count({nx, ny}) &&
+                            std::pair<int, int>{nx, ny} != target_pt)
+                        {
+                            occ_cost += 500;
+                        }
+
+                        int step_cost = 10;
+                        int nc = c + step_cost + turn_cost + h_cost + occ_cost;
+                        if (nc < dist[nx][ny][0][next_d])
+                        {
+                            dist[nx][ny][0][next_d] = nc;
+                            parent[nx][ny][0][next_d] = {x, y, layer, dir};
+                            pq.push({nc, nx, ny, 0, next_d});
+                        }
+                    }
+
+                    // 2. Ramp Up to Overpass Bridge (Layer 1)
+                    // Must continue straight ahead in current direction 'dir'
+                    {
+                        int nx = x + dxy[dir][0];
+                        int ny = y + dxy[dir][1];
+
+                        if (nx >= 0 && nx < W && ny >= 0 && ny < H &&
+                            !facility_cells.count({nx, ny}) &&
+                            std::pair<int, int>{nx, ny} != target_pt)
+                        {
+                            int h_cost = cell_history_penalty[nx][ny];
+                            int occ_cost = 0;
+                            const auto& occ1 = cell_occ[nx][ny][1];
+                            if (!occ1.empty())
+                            {
+                                occ_cost = static_cast<int>((1500.0 + 50.0 * h_cost) * p_k);
+                            }
+                            else
+                            {
+                                const auto& occ0 = cell_occ[nx][ny][0];
+                                if (!occ0.empty())
+                                {
+                                    bool is_v = (dir == 0 || dir == 1);
+                                    bool other_v = (occ0[0].dir_in == 0 || occ0[0].dir_in == 1);
+                                    if (occ0[0].is_straight && (is_v != other_v))
+                                    {
+                                        occ_cost = 0; // Valid perpendicular bridge over Layer 0!
+                                    }
+                                    else
+                                    {
+                                        occ_cost = static_cast<int>((1000.0 + 50.0 * h_cost) * p_k);
+                                    }
+                                }
+                            }
+
+                            int bridge_step_cost = 30; // base (10) + bridge hardware (20)
+                            int nc = c + bridge_step_cost + h_cost + occ_cost;
+                            if (nc < dist[nx][ny][1][dir])
+                            {
+                                dist[nx][ny][1][dir] = nc;
+                                parent[nx][ny][1][dir] = {x, y, layer, dir};
+                                pq.push({nc, nx, ny, 1, dir});
+                            }
+                        }
+                    }
+                }
+                else // layer == 1 (Currently on Overpass Bridge)
+                {
+                    // Physical rule: Bridges CANNOT turn! Must continue straight ahead in direction 'dir'.
+                    int nx = x + dxy[dir][0];
+                    int ny = y + dxy[dir][1];
+
+                    if (nx >= 0 && nx < W && ny >= 0 && ny < H &&
+                        !facility_cells.count({nx, ny}))
+                    {
+                        int h_cost = cell_history_penalty[nx][ny];
+
+                        // Choice A: Ramp Down to Ground (Layer 0)
+                        {
+                            int occ_cost = 0;
+                            const auto& occ0 = cell_occ[nx][ny][0];
+                            if (!occ0.empty())
+                            {
+                                occ_cost = static_cast<int>((1000.0 + 50.0 * h_cost) * p_k);
+                            }
+                            if (all_port_access_cells.count({nx, ny}) &&
+                                std::pair<int, int>{nx, ny} != target_pt)
+                            {
+                                occ_cost += 500;
+                            }
+
+                            int step_cost = 10;
+                            int nc = c + step_cost + h_cost + occ_cost;
+                            if (nc < dist[nx][ny][0][dir])
+                            {
+                                dist[nx][ny][0][dir] = nc;
+                                parent[nx][ny][0][dir] = {x, y, layer, dir};
+                                pq.push({nc, nx, ny, 0, dir});
+                            }
+                        }
+
+                        // Choice B: Continue on Bridge (Layer 1) over another parallel belt
+                        if (std::pair<int, int>{nx, ny} != target_pt)
+                        {
+                            int occ_cost = 0;
+                            const auto& occ1 = cell_occ[nx][ny][1];
+                            if (!occ1.empty())
+                            {
+                                occ_cost = static_cast<int>((1500.0 + 50.0 * h_cost) * p_k);
+                            }
+                            else
+                            {
+                                const auto& occ0 = cell_occ[nx][ny][0];
+                                if (!occ0.empty())
+                                {
+                                    bool is_v = (dir == 0 || dir == 1);
+                                    bool other_v = (occ0[0].dir_in == 0 || occ0[0].dir_in == 1);
+                                    if (occ0[0].is_straight && (is_v != other_v))
+                                    {
+                                        occ_cost = 0;
+                                    }
+                                    else
+                                    {
+                                        occ_cost = static_cast<int>((1000.0 + 50.0 * h_cost) * p_k);
+                                    }
+                                }
+                            }
+
+                            int bridge_step_cost = 30;
+                            int nc = c + bridge_step_cost + h_cost + occ_cost;
+                            if (nc < dist[nx][ny][1][dir])
+                            {
+                                dist[nx][ny][1][dir] = nc;
+                                parent[nx][ny][1][dir] = {x, y, layer, dir};
+                                pq.push({nc, nx, ny, 1, dir});
+                            }
+                        }
+                    }
                 }
             }
 
-            if (!found)
+            if (best_target_dir == -1)
             {
-                layout.is_conveyor_feasible = false;
-                failed_stream_indices.push_back(static_cast<int>(s_idx));
-                std::cerr << "[WARNING] Conveyor path infeasible for stream: "
-                          << s.item << " from " << pe_src.name << " to "
-                          << pe_dst.name << std::endl;
-                continue;
+                return false;
             }
 
-            // Reconstruct path
-            std::vector<std::pair<int, int>> path;
-            auto curr = target_pt;
-            while (curr != start_pt)
+            std::vector<PathNode> path;
+            int cx = target_pt.first;
+            int cy = target_pt.second;
+            int clayer = 0;
+            int cdir = best_target_dir;
+
+            while (true)
             {
-                path.push_back(curr);
-                curr = came_from[curr];
+                path.push_back({cx, cy, clayer});
+                if (cx == start_pt.first && cy == start_pt.second &&
+                    clayer == 0 && cdir == d_from_src)
+                {
+                    break;
+                }
+                Parent p = parent[cx][cy][clayer][cdir];
+                cx = p.x;
+                cy = p.y;
+                clayer = p.layer;
+                cdir = p.dir;
             }
-            path.push_back(start_pt);
             std::reverse(path.begin(), path.end());
+            stream_paths[s_idx] = path;
+            add_path_to_occ(s_idx);
+            return true;
+        };
 
-            // Connect path segments into layout.conveyor_cells
-            for (size_t k = 0; k < path.size(); ++k)
+        // Initial routing pass with soft congestion (p_0 = 1.0)
+        double p_k = 1.0;
+        bool all_initial_routed = true;
+        for (size_t s_idx = 0; s_idx < streams.size(); ++s_idx)
+        {
+            if (!route_stream(static_cast<int>(s_idx), p_k))
             {
-                auto pt = path[k];
-                if (k == 0)
-                {
-                    int to_src_dx = -src_port.fx;
-                    int to_src_dy = -src_port.fy;
-                    layout.conveyor_cells[pt] |=
-                        get_dir_mask(to_src_dx, to_src_dy);
-                }
-                else
-                {
-                    int prev_dx = path[k - 1].first - pt.first;
-                    int prev_dy = path[k - 1].second - pt.second;
-                    layout.conveyor_cells[pt] |= get_dir_mask(prev_dx, prev_dy);
-                }
-
-                if (k == path.size() - 1)
-                {
-                    int to_dst_dx = -dst_port.fx;
-                    int to_dst_dy = -dst_port.fy;
-                    layout.conveyor_cells[pt] |=
-                        get_dir_mask(to_dst_dx, to_dst_dy);
-                }
-                else
-                {
-                    int next_dx = path[k + 1].first - pt.first;
-                    int next_dy = path[k + 1].second - pt.second;
-                    layout.conveyor_cells[pt] |= get_dir_mask(next_dx, next_dy);
-                }
-
-                layout.conveyor_items[pt] = s.item;
-            }
-
-            // Assign item to src and dst ports for color visualization
-            for (auto& p : layout.entities[s.src_entity].ports)
-            {
-                if (p.x == src_port.x && p.y == src_port.y)
-                {
-                    p.item = s.item;
-                    break;
-                }
-            }
-            for (auto& p : layout.entities[s.dst_entity].ports)
-            {
-                if (p.x == dst_port.x && p.y == dst_port.y)
-                {
-                    p.item = s.item;
-                    break;
-                }
+                all_initial_routed = false;
             }
         }
 
-        // Check if all streams are feasible
-        if (layout.is_conveyor_feasible)
+        bool pf_feasible = false;
+        std::vector<int> conflicted_stream_indices;
+        std::set<std::pair<int, int>> final_conflicted_cells;
+
+        const int max_pf_iters = 50;
+        for (int iter = 0; iter < max_pf_iters; ++iter)
         {
+            std::set<std::pair<int, int>> conflicted_cells;
+            std::vector<int> cur_conflicted_streams;
+
+            for (int y = 0; y < H; ++y)
+            {
+                for (int x = 0; x < W; ++x)
+                {
+                    if (is_conflicted(x, y))
+                    {
+                        conflicted_cells.insert({x, y});
+                        for (const auto& occ : cell_occ[x][y][0])
+                            cur_conflicted_streams.push_back(occ.stream_idx);
+                        for (const auto& occ : cell_occ[x][y][1])
+                            cur_conflicted_streams.push_back(occ.stream_idx);
+                    }
+                }
+            }
+
+            if (conflicted_cells.empty() && all_initial_routed)
+            {
+                pf_feasible = true;
+                break;
+            }
+
+
+            std::sort(cur_conflicted_streams.begin(), cur_conflicted_streams.end());
+            cur_conflicted_streams.erase(
+                std::unique(cur_conflicted_streams.begin(), cur_conflicted_streams.end()),
+                cur_conflicted_streams.end());
+
+            conflicted_stream_indices = cur_conflicted_streams;
+            final_conflicted_cells = conflicted_cells;
+
+            // Increase historical penalty on conflicted cells
+            for (const auto& [cx, cy] : conflicted_cells)
+            {
+                cell_history_penalty[cx][cy] += 35;
+            }
+
+            // Exponential VPR schedule for present congestion: p_{k+1} = min(25.0, 1.3 * p_k)
+            p_k = std::min(25.0, p_k * 1.3);
+
+            // Slack-based rip-up sorting (Recommendation 4):
+            // On even iterations: sort ascending by slack (critical tight streams claim lane first).
+            // On odd iterations: random shuffle to break cyclic locks.
+            if (iter % 2 == 0)
+            {
+                std::sort(cur_conflicted_streams.begin(), cur_conflicted_streams.end(),
+                          [&](int a, int b) {
+                              int dist_a = std::abs(stream_endpoints[a].start_pt.first - stream_endpoints[a].target_pt.first) +
+                                           std::abs(stream_endpoints[a].start_pt.second - stream_endpoints[a].target_pt.second);
+                              int dist_b = std::abs(stream_endpoints[b].start_pt.first - stream_endpoints[b].target_pt.first) +
+                                           std::abs(stream_endpoints[b].start_pt.second - stream_endpoints[b].target_pt.second);
+                              int slack_a = static_cast<int>(stream_paths[a].size()) - dist_a;
+                              int slack_b = static_cast<int>(stream_paths[b].size()) - dist_b;
+                              return slack_a < slack_b;
+                          });
+            }
+            else
+            {
+                std::mt19937 rng(42 + iter);
+                std::shuffle(cur_conflicted_streams.begin(), cur_conflicted_streams.end(), rng);
+            }
+
+            // Synchronous rip-up: remove ALL conflicted streams FIRST
+            for (int s_idx : cur_conflicted_streams)
+            {
+                remove_path_from_occ(s_idx);
+            }
+
+            // Immediately reroute each conflicted stream one by one
+            bool reroute_all = true;
+            for (int s_idx : cur_conflicted_streams)
+            {
+                if (!route_stream(s_idx, p_k))
+                {
+                    reroute_all = false;
+                }
+            }
+            all_initial_routed = all_initial_routed && reroute_all;
+        }
+
+        if (pf_feasible)
+        {
+            // Assemble conveyor cells and items
+            for (size_t s_idx = 0; s_idx < streams.size(); ++s_idx)
+            {
+                const auto& s = streams[s_idx];
+                const auto& path = stream_paths[s_idx];
+                const auto& ep = stream_endpoints[s_idx];
+                int m = static_cast<int>(path.size()) - 1;
+
+                for (int k = 0; k <= m; ++k)
+                {
+                    auto pt = std::make_pair(path[k].x, path[k].y);
+                    int mask = 0;
+                    if (k == 0)
+                    {
+                        int to_src_dx = -ep.src_port.fx;
+                        int to_src_dy = -ep.src_port.fy;
+                        mask |= get_dir_mask(to_src_dx, to_src_dy);
+                    }
+                    else
+                    {
+                        int prev_dx = path[k - 1].x - pt.first;
+                        int prev_dy = path[k - 1].y - pt.second;
+                        mask |= get_dir_mask(prev_dx, prev_dy);
+                    }
+
+                    if (k == m)
+                    {
+                        int to_dst_dx = -ep.dst_port.fx;
+                        int to_dst_dy = -ep.dst_port.fy;
+                        mask |= get_dir_mask(to_dst_dx, to_dst_dy);
+                    }
+                    else
+                    {
+                        int next_dx = path[k + 1].x - pt.first;
+                        int next_dy = path[k + 1].y - pt.second;
+                        mask |= get_dir_mask(next_dx, next_dy);
+                    }
+
+                    layout.conveyor_cells[pt] |= mask;
+                    layout.conveyor_items[pt] = s.item;
+                }
+
+                // Assign item to src and dst ports for color visualization
+                for (auto& p : layout.entities[s.src_entity].ports)
+                {
+                    if (p.x == ep.src_port.x && p.y == ep.src_port.y)
+                    {
+                        p.item = s.item;
+                        break;
+                    }
+                }
+                for (auto& p : layout.entities[s.dst_entity].ports)
+                {
+                    if (p.x == ep.dst_port.x && p.y == ep.dst_port.y)
+                    {
+                        p.item = s.item;
+                        break;
+                    }
+                }
+            }
+
             if (attempt > 1)
             {
-                std::cout << "[OK] Conveyor routing feasible for "
+                std::cout << "[OK] PathFinder conveyor routing feasible for "
                           << product.name << " on attempt " << attempt << "!\n";
             }
 
@@ -1332,11 +1995,11 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
             return true;
         }
 
-        // Infeasible: Add no-good cuts to CP-SAT model and retry!
-        std::cout << "[INFO] Subproblem conveyor check failed for "
+        // Conveyor routing infeasible: Add no-good cuts to CP-SAT
+        std::cout << "[INFO] PathFinder conveyor check failed for "
                   << product.name << " on attempt " << attempt << " ("
-                  << failed_stream_indices.size()
-                  << " failed streams). Repeating subproblem with no-good cuts...\n";
+                  << conflicted_stream_indices.size()
+                  << " conflicted streams). Repeating subproblem with cuts...\n";
 
         std::vector<BoolVar> entity_matches(N);
         std::vector<BoolVar> not_matches;
@@ -1375,15 +2038,76 @@ bool BlueprintSolver::solve(Product& product, BlueprintLayout& layout)
         // Global cut: forbid the exact full placement
         model.AddBoolOr(not_matches);
 
-        // Targeted cuts on failed streams: forbid src and dst both staying in current position/rotation
-        for (int s_idx : failed_stream_indices)
+        // Targeted cuts on conflicted streams (Recommendation 5: Relative displacement cuts)
+        for (int s_idx : conflicted_stream_indices)
         {
             int u = streams[s_idx].src_entity;
             int v = streams[s_idx].dst_entity;
             if (u >= 0 && u < N && v >= 0 && v < N)
             {
+                // Absolute placement cut
                 model.AddBoolOr(
                     {entity_matches[u].Not(), entity_matches[v].Not()});
+
+                // Relative displacement cut: forbid relative delta (dx, dy) and rotations
+                int sol_xu = SolutionIntegerValue(response, posX[u]);
+                int sol_yu = SolutionIntegerValue(response, posY[u]);
+                int sol_xv = SolutionIntegerValue(response, posX[v]);
+                int sol_yv = SolutionIntegerValue(response, posY[v]);
+                int dx_star = sol_xu - sol_xv;
+                int dy_star = sol_yu - sol_yv;
+
+                int ru = 0, rv = 0;
+                for (int r = 0; r < 4; ++r)
+                {
+                    if (SolutionBooleanValue(response, rotB[u][r]))
+                        ru = r;
+                    if (SolutionBooleanValue(response, rotB[v][r]))
+                        rv = r;
+                }
+
+                LinearExpr diff_x = posX[u] - posX[v];
+                LinearExpr diff_y = posY[u] - posY[v];
+                BoolVar match_dx = model.NewBoolVar();
+                BoolVar match_dy = model.NewBoolVar();
+                model.AddEquality(diff_x, dx_star).OnlyEnforceIf(match_dx);
+                model.AddNotEqual(diff_x, dx_star).OnlyEnforceIf(match_dx.Not());
+                model.AddEquality(diff_y, dy_star).OnlyEnforceIf(match_dy);
+                model.AddNotEqual(diff_y, dy_star).OnlyEnforceIf(match_dy.Not());
+
+                model.AddBoolOr({match_dx.Not(), match_dy.Not(),
+                                 rotB[u][ru].Not(), rotB[v][rv].Not()});
+            }
+        }
+
+        // Pairwise cuts for streams sharing a conflicted cell
+        for (const auto& [cx, cy] : final_conflicted_cells)
+        {
+            std::vector<int> s_indices;
+            for (const auto& o : cell_occ[cx][cy][0])
+                s_indices.push_back(o.stream_idx);
+            for (const auto& o : cell_occ[cx][cy][1])
+                s_indices.push_back(o.stream_idx);
+
+            if (s_indices.size() >= 2)
+            {
+                int u1 = streams[s_indices[0]].src_entity;
+                int v1 = streams[s_indices[0]].dst_entity;
+                int u2 = streams[s_indices[1]].src_entity;
+                int v2 = streams[s_indices[1]].dst_entity;
+                std::vector<BoolVar> cut_terms;
+                if (u1 >= 0 && u1 < N)
+                    cut_terms.push_back(entity_matches[u1].Not());
+                if (v1 >= 0 && v1 < N)
+                    cut_terms.push_back(entity_matches[v1].Not());
+                if (u2 >= 0 && u2 < N)
+                    cut_terms.push_back(entity_matches[u2].Not());
+                if (v2 >= 0 && v2 < N)
+                    cut_terms.push_back(entity_matches[v2].Not());
+                if (!cut_terms.empty())
+                {
+                    model.AddBoolOr(cut_terms);
+                }
             }
         }
     }
