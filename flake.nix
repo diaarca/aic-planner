@@ -12,11 +12,18 @@
       nixpkgs,
       flake-utils,
     }:
+    let
+      # Package definition
+      overlay = final: prev: {
+        aic_planner = final.callPackage ./package.nix { };
+      };
+    in
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = import nixpkgs {
           inherit system;
+          overlays = [ overlay ];
         };
 
         build-dir = "build";
@@ -47,27 +54,17 @@
         '';
       in
       {
+        # Get from package.nix values
+        packages.default = pkgs.aic_planner;
+
+        # Check command for the build
+        checks.default = self.packages.${system}.default;
+
         devShells.default = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [
-            cmake
-            pkg-config
-            gnumake
-            clang
-          ];
+          # Reuses the inputs from package.nix
+          inputsFrom = [ self.packages.${system}.default ];
 
           buildInputs = with pkgs; [
-            # dependencies
-            or-tools
-            fast-cpp-csv-parser
-            protobuf
-            re2
-            zlib
-            bzip2
-            clp
-            cbc
-            glpk
-            eigen
-
             # custom commands
             configure
             build
@@ -81,5 +78,9 @@
           '';
         };
       }
-    );
+    )
+    // {
+      # Overlay of the aic_planner package
+      overlays.default = overlay;
+    };
 }

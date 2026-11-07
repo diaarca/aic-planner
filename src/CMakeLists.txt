@@ -45,3 +45,5 @@ target_link_libraries(aic_planner_lib PUBLIC
 add_executable(aic_planner main.cpp)
 
 target_link_libraries(aic_planner PRIVATE aic_planner_lib)
+
+install(TARGETS aic_planner RUNTIME DESTINATION bin)

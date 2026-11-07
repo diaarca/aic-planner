@@ -42,6 +42,90 @@ run data/valley_iv
 
 ---
 
+## Nix Package
+
+This project provides a Nix Package. It can be installed with or without flakes.
+
+### 1. Flakes - Install / Upgrade
+
+#### A. Local profile (clone repo) - Install
+```bash
+nix build
+nix profile install .
+```
+Binary is build in: _./result/bin/aic_planner_
+
+#### B. Distant profile (From GitHub) - Install
+```bash
+nix run github:diaarca/aic-planner <input_file> # Run the application without installation
+nix profile install github:diaarca/aic-planner  # Install the application on nix profile
+```
+
+#### C. Profile (local / distant) - Upgrade
+```bash
+nix profile list    # Get the name of the profile to upgrade
+nix profile upgrade <name>
+```
+
+#### D. Home Manager - Install
+Add the input in your `flake.nix`:
+```nix
+inputs.aic-planner.url = "github:diaarca/aic-planner";
+```
+
+Then add the package to your Home Manager modules:
+```nix
+modules = [
+  ./home.nix
+  { home.packages = [ aic-planner.packages.x86_64-linux.default ]; }
+];
+```
+
+_*OR*_ use the overlay, to get `pkgs.aic_planner` in all your modules:
+```nix
+pkgs = import nixpkgs {
+  system = "x86_64-linux";
+  overlays = [ aic-planner.overlays.default ];
+};
+```
+
+#### E. Home Manager - Upgrade
+```bash
+nix flake update aic-planner
+```
+
+### 2. Non-Flakes - Install / Upgrade
+
+#### A. Profile nix - Install
+```bash
+nix-env -if https://github.com/diaarca/aic-planner/archive/main.tar.gz -A aic_planner
+```
+
+#### B. Home Manager - Install
+In `home.nix`:
+```nix
+home.packages = [
+  (import (fetchTarball "https://github.com/diaarca/aic-planner/archive/main.tar.gz") { }).aic_planner
+];
+```
+
+_*OR*_ use the overlay, to get `pkgs.aic_planner` in all your modules:
+```nix
+nixpkgs.overlays = [
+  (import (fetchTarball "https://github.com/diaarca/aic-planner/archive/main.tar.gz") { }).overlay
+];
+```
+
+#### C. Upgrade
+To upgrade, run the commands again.
+
+### 3. Usage
+```bash
+aic_planner <data_folder_path>
+```
+
+---
+
 ## Data Structure
 The solver expects a directory containing the following CSV files:
 - `minerals.csv`: Resource limits.
@@ -60,7 +144,6 @@ We are actively working to improve the AIC Planner. Here is our wishlist for fut
 - **Wuling Region Support** ([#7](https://github.com/diaarca/aic-planner/issues/7)): Add full support for the `Wulling` region, including data files and specific in-game logic.
 - **Dynamic Facility Logic** ([#8](https://github.com/diaarca/aic-planner/issues/8)): Shift from blueprint-based data to a facility-logic-based engine. This allows the solver to analyze individual facility attributes (size, recipes, inputs/outputs) to autonomously decide on the most profitable products and optimal placements.
 - **Solution Visualizer** ([#9](https://github.com/diaarca/aic-planner/issues/9)): Create a visual representation of the solver's output to help players build the optimized factory layout in-game.
-- **Nix Package Conversion** ([#14](https://github.com/diaarca/aic-planner/issues/14)): Convert the project to a Nix package to improve reproducibility and portability.
 
 ## Contributing
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community guidelines.
