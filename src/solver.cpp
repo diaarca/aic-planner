@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <numeric>
 
 using namespace operations_research;
@@ -92,6 +93,36 @@ void Solver::instantiateVariables()
     _area_slots.resize(_areas.size());
     if (!_product_layouts.empty())
     {
+        // Dynamic upper bound on slots based on the smallest candidate
+        // blueprint
+        int min_blueprint_area = std::numeric_limits<int>::max();
+        int min_blueprint_depot = std::numeric_limits<int>::max();
+        int min_blueprint_min_dim = std::numeric_limits<int>::max();
+
+        for (const auto& [name, layout] : _product_layouts)
+        {
+            int area = layout.bounding_width * layout.bounding_height;
+            if (area > 0 && area < min_blueprint_area)
+            {
+                min_blueprint_area = area;
+            }
+            if (layout.depot_length > 0 &&
+                layout.depot_length < min_blueprint_depot)
+            {
+                min_blueprint_depot = layout.depot_length;
+            }
+            int min_d = std::min(layout.bounding_width, layout.bounding_height);
+            if (min_d > 0 && min_d < min_blueprint_min_dim)
+            {
+                min_blueprint_min_dim = min_d;
+            }
+        }
+        if (min_blueprint_area == std::numeric_limits<int>::max() ||
+            min_blueprint_area <= 0)
+        {
+            min_blueprint_area = 1;
+        }
+
         for (size_t a = 0; a < _areas.size(); ++a)
         {
             int W_a = _areas[a].pac_width;
@@ -99,7 +130,34 @@ void Solver::instantiateVariables()
             if (W_a <= 0 || H_a <= 0)
                 continue;
 
-            int K = 8;
+            // Compute dynamic slot capacity K_a based on area footprint and
+            // depot length
+            int max_by_area = (W_a * H_a) / min_blueprint_area;
+            int total_depot = static_cast<int>(_areas[a].pac_depot_width +
+                                               _areas[a].pac_depot_height);
+
+            int K = max_by_area;
+            if (min_blueprint_depot > 0 &&
+                min_blueprint_depot != std::numeric_limits<int>::max())
+            {
+                if (total_depot > 0)
+                {
+                    int max_by_depot = total_depot / min_blueprint_depot;
+                    K = std::min(K, max_by_depot);
+                }
+                else
+                {
+                    // If factories require depots but area has 0 depot length,
+                    // 0 can fit
+                    K = 0;
+                }
+            }
+            if (min_blueprint_min_dim != std::numeric_limits<int>::max() &&
+                std::max(W_a, H_a) < min_blueprint_min_dim)
+            {
+                K = 0;
+            }
+
             for (int k = 0; k < K; ++k)
             {
                 AreaSlotVar slot;
@@ -120,14 +178,14 @@ void Solver::instantiateVariables()
                 slot.is_rot[270] =
                     _cp_model.NewBoolVar().WithName(prefix + "_r270");
 
-                slot.bx =
-                    _cp_model.NewIntVar(Domain(0, W_a)).WithName(prefix + "_bx");
-                slot.by =
-                    _cp_model.NewIntVar(Domain(0, H_a)).WithName(prefix + "_by");
-                slot.bw =
-                    _cp_model.NewIntVar(Domain(0, W_a)).WithName(prefix + "_bw");
-                slot.bh =
-                    _cp_model.NewIntVar(Domain(0, H_a)).WithName(prefix + "_bh");
+                slot.bx = _cp_model.NewIntVar(Domain(0, W_a))
+                              .WithName(prefix + "_bx");
+                slot.by = _cp_model.NewIntVar(Domain(0, H_a))
+                              .WithName(prefix + "_by");
+                slot.bw = _cp_model.NewIntVar(Domain(0, W_a))
+                              .WithName(prefix + "_bw");
+                slot.bh = _cp_model.NewIntVar(Domain(0, H_a))
+                              .WithName(prefix + "_bh");
 
                 _area_slots[a].push_back(slot);
             }
@@ -251,173 +309,193 @@ void Solver::declareConstraints()
             _areas[a].pac_width * _areas[a].pac_height;
         if (total_available_area > 0)
         {
-            if (!_product_layouts.empty() && !_area_slots[a].empty())
+            if (!_product_layouts.empty())
             {
-                int W_a = _areas[a].pac_width;
-                int H_a = _areas[a].pac_height;
-
-                bool has_top_depot = false;
-                int top_x1 = 0, top_x2 = W_a - 1;
-                bool has_right_depot = false;
-                int right_y1 = 0, right_y2 = H_a - 1;
-                bool has_bottom_depot = false;
-                int bot_x1 = 0, bot_x2 = W_a - 1;
-                bool has_left_depot = false;
-                int left_y1 = 0, left_y2 = H_a - 1;
-
-                for (const auto& d : _areas[a].static_depots)
+                if (!_area_slots[a].empty())
                 {
-                    if (d.y1 == H_a && d.y2 == H_a)
+                    int W_a = _areas[a].pac_width;
+                    int H_a = _areas[a].pac_height;
+
+                    bool has_top_depot = false;
+                    int top_x1 = 0, top_x2 = W_a - 1;
+                    bool has_right_depot = false;
+                    int right_y1 = 0, right_y2 = H_a - 1;
+                    bool has_bottom_depot = false;
+                    int bot_x1 = 0, bot_x2 = W_a - 1;
+                    bool has_left_depot = false;
+                    int left_y1 = 0, left_y2 = H_a - 1;
+
+                    for (const auto& d : _areas[a].static_depots)
                     {
-                        has_top_depot = true;
-                        top_x1 = std::min(d.x1, d.x2);
-                        top_x2 = std::max(d.x1, d.x2);
-                    }
-                    if (d.x1 == W_a && d.x2 == W_a)
-                    {
-                        has_right_depot = true;
-                        right_y1 = std::min(d.y1, d.y2);
-                        right_y2 = std::max(d.y1, d.y2);
-                    }
-                    if (d.y1 == 0 && d.y2 == 0)
-                    {
-                        has_bottom_depot = true;
-                        bot_x1 = std::min(d.x1, d.x2);
-                        bot_x2 = std::max(d.x1, d.x2);
-                    }
-                    if (d.x1 == 0 && d.x2 == 0)
-                    {
-                        has_left_depot = true;
-                        left_y1 = std::min(d.y1, d.y2);
-                        left_y2 = std::max(d.y1, d.y2);
-                    }
-                }
-
-                std::vector<IntervalVar> x_intervals;
-                std::vector<IntervalVar> y_intervals;
-
-                for (size_t k = 0; k < _area_slots[a].size(); ++k)
-                {
-                    auto& slot = _area_slots[a][k];
-                    _cp_model.AddEquality(LinearExpr::Sum(slot.is_prod),
-                                          slot.active);
-
-                    LinearExpr rot_sum;
-                    rot_sum += slot.is_rot[0];
-                    rot_sum += slot.is_rot[90];
-                    rot_sum += slot.is_rot[180];
-                    rot_sum += slot.is_rot[270];
-                    _cp_model.AddEquality(rot_sum, slot.active);
-
-                    if (!has_top_depot)
-                        _cp_model.AddEquality(slot.is_rot[0], 0);
-                    if (!has_right_depot)
-                        _cp_model.AddEquality(slot.is_rot[90], 0);
-                    if (!has_bottom_depot)
-                        _cp_model.AddEquality(slot.is_rot[180], 0);
-                    if (!has_left_depot)
-                        _cp_model.AddEquality(slot.is_rot[270], 0);
-
-                    LinearExpr bw_expr;
-                    LinearExpr bh_expr;
-                    for (size_t p = 0; p < _products.size(); ++p)
-                    {
-                        const auto& layout =
-                            _product_layouts.at(_products[p].name);
-                        int bw0 = layout.bounding_width;
-                        int bh0 = layout.bounding_height;
-
-                        for (int r : {0, 90, 180, 270})
+                        if (d.y1 == H_a && d.y2 == H_a)
                         {
-                            int cur_w = (r == 0 || r == 180) ? bw0 : bh0;
-                            int cur_h = (r == 0 || r == 180) ? bh0 : bw0;
-
-                            BoolVar is_pr = _cp_model.NewBoolVar();
-                            _cp_model.AddBoolAnd({slot.is_prod[p], slot.is_rot[r]})
-                                .OnlyEnforceIf(is_pr);
-                            _cp_model.AddBoolOr({slot.is_prod[p].Not(),
-                                                 slot.is_rot[r].Not()})
-                                .OnlyEnforceIf(is_pr.Not());
-
-                            bw_expr += LinearExpr::Term(is_pr, cur_w);
-                            bh_expr += LinearExpr::Term(is_pr, cur_h);
+                            has_top_depot = true;
+                            top_x1 = std::min(d.x1, d.x2);
+                            top_x2 = std::max(d.x1, d.x2);
+                        }
+                        if (d.x1 == W_a && d.x2 == W_a)
+                        {
+                            has_right_depot = true;
+                            right_y1 = std::min(d.y1, d.y2);
+                            right_y2 = std::max(d.y1, d.y2);
+                        }
+                        if (d.y1 == 0 && d.y2 == 0)
+                        {
+                            has_bottom_depot = true;
+                            bot_x1 = std::min(d.x1, d.x2);
+                            bot_x2 = std::max(d.x1, d.x2);
+                        }
+                        if (d.x1 == 0 && d.x2 == 0)
+                        {
+                            has_left_depot = true;
+                            left_y1 = std::min(d.y1, d.y2);
+                            left_y2 = std::max(d.y1, d.y2);
                         }
                     }
-                    _cp_model.AddEquality(slot.bw, bw_expr);
-                    _cp_model.AddEquality(slot.bh, bh_expr);
 
-                    _cp_model.AddLessOrEqual(slot.bx + slot.bw, W_a);
-                    _cp_model.AddLessOrEqual(slot.by + slot.bh, H_a);
+                    std::vector<IntervalVar> x_intervals;
+                    std::vector<IntervalVar> y_intervals;
 
-                    if (has_top_depot)
-                    {
-                        _cp_model.AddEquality(slot.by + slot.bh, H_a)
-                            .OnlyEnforceIf(slot.is_rot[0]);
-                        _cp_model.AddGreaterOrEqual(slot.bx, top_x1)
-                            .OnlyEnforceIf(slot.is_rot[0]);
-                        _cp_model.AddLessOrEqual(slot.bx + slot.bw - 1, top_x2)
-                            .OnlyEnforceIf(slot.is_rot[0]);
-                    }
-                    if (has_right_depot)
-                    {
-                        _cp_model.AddEquality(slot.bx + slot.bw, W_a)
-                            .OnlyEnforceIf(slot.is_rot[90]);
-                        _cp_model.AddGreaterOrEqual(slot.by, right_y1)
-                            .OnlyEnforceIf(slot.is_rot[90]);
-                        _cp_model.AddLessOrEqual(slot.by + slot.bh - 1, right_y2)
-                            .OnlyEnforceIf(slot.is_rot[90]);
-                    }
-                    if (has_bottom_depot)
-                    {
-                        _cp_model.AddEquality(slot.by, 0)
-                            .OnlyEnforceIf(slot.is_rot[180]);
-                        _cp_model.AddGreaterOrEqual(slot.bx, bot_x1)
-                            .OnlyEnforceIf(slot.is_rot[180]);
-                        _cp_model.AddLessOrEqual(slot.bx + slot.bw - 1, bot_x2)
-                            .OnlyEnforceIf(slot.is_rot[180]);
-                    }
-                    if (has_left_depot)
-                    {
-                        _cp_model.AddEquality(slot.bx, 0)
-                            .OnlyEnforceIf(slot.is_rot[270]);
-                        _cp_model.AddGreaterOrEqual(slot.by, left_y1)
-                            .OnlyEnforceIf(slot.is_rot[270]);
-                        _cp_model.AddLessOrEqual(slot.by + slot.bh - 1, left_y2)
-                            .OnlyEnforceIf(slot.is_rot[270]);
-                    }
-
-                    IntVar end_x = _cp_model.NewIntVar(Domain(0, W_a));
-                    IntVar end_y = _cp_model.NewIntVar(Domain(0, H_a));
-                    _cp_model.AddEquality(end_x, slot.bx + slot.bw);
-                    _cp_model.AddEquality(end_y, slot.by + slot.bh);
-                    IntervalVar ix = _cp_model.NewOptionalIntervalVar(
-                        slot.bx, slot.bw, end_x, slot.active);
-                    IntervalVar iy = _cp_model.NewOptionalIntervalVar(
-                        slot.by, slot.bh, end_y, slot.active);
-                    x_intervals.push_back(ix);
-                    y_intervals.push_back(iy);
-
-                    if (k + 1 < _area_slots[a].size())
-                    {
-                        _cp_model.AddGreaterOrEqual(
-                            slot.active, _area_slots[a][k + 1].active);
-                    }
-                }
-
-                NoOverlap2DConstraint no_overlap = _cp_model.AddNoOverlap2D();
-                for (size_t i = 0; i < x_intervals.size(); ++i)
-                {
-                    no_overlap.AddRectangle(x_intervals[i], y_intervals[i]);
-                }
-
-                for (size_t p = 0; p < _products.size(); ++p)
-                {
-                    LinearExpr total_p;
                     for (size_t k = 0; k < _area_slots[a].size(); ++k)
                     {
-                        total_p += _area_slots[a][k].is_prod[p];
+                        auto& slot = _area_slots[a][k];
+                        _cp_model.AddEquality(LinearExpr::Sum(slot.is_prod),
+                                              slot.active);
+
+                        LinearExpr rot_sum;
+                        rot_sum += slot.is_rot[0];
+                        rot_sum += slot.is_rot[90];
+                        rot_sum += slot.is_rot[180];
+                        rot_sum += slot.is_rot[270];
+                        _cp_model.AddEquality(rot_sum, slot.active);
+
+                        if (!has_top_depot)
+                            _cp_model.AddEquality(slot.is_rot[0], 0);
+                        if (!has_right_depot)
+                            _cp_model.AddEquality(slot.is_rot[90], 0);
+                        if (!has_bottom_depot)
+                            _cp_model.AddEquality(slot.is_rot[180], 0);
+                        if (!has_left_depot)
+                            _cp_model.AddEquality(slot.is_rot[270], 0);
+
+                        LinearExpr bw_expr;
+                        LinearExpr bh_expr;
+                        for (size_t p = 0; p < _products.size(); ++p)
+                        {
+                            const auto& layout =
+                                _product_layouts.at(_products[p].name);
+                            int bw0 = layout.bounding_width;
+                            int bh0 = layout.bounding_height;
+
+                            for (int r : {0, 90, 180, 270})
+                            {
+                                int cur_w = (r == 0 || r == 180) ? bw0 : bh0;
+                                int cur_h = (r == 0 || r == 180) ? bh0 : bw0;
+
+                                BoolVar is_pr = _cp_model.NewBoolVar();
+                                _cp_model
+                                    .AddBoolAnd(
+                                        {slot.is_prod[p], slot.is_rot[r]})
+                                    .OnlyEnforceIf(is_pr);
+                                _cp_model
+                                    .AddBoolOr({slot.is_prod[p].Not(),
+                                                slot.is_rot[r].Not()})
+                                    .OnlyEnforceIf(is_pr.Not());
+
+                                bw_expr += LinearExpr::Term(is_pr, cur_w);
+                                bh_expr += LinearExpr::Term(is_pr, cur_h);
+                            }
+                        }
+                        _cp_model.AddEquality(slot.bw, bw_expr);
+                        _cp_model.AddEquality(slot.bh, bh_expr);
+
+                        _cp_model.AddLessOrEqual(slot.bx + slot.bw, W_a);
+                        _cp_model.AddLessOrEqual(slot.by + slot.bh, H_a);
+
+                        if (has_top_depot)
+                        {
+                            _cp_model.AddEquality(slot.by + slot.bh, H_a)
+                                .OnlyEnforceIf(slot.is_rot[0]);
+                            _cp_model.AddGreaterOrEqual(slot.bx, top_x1)
+                                .OnlyEnforceIf(slot.is_rot[0]);
+                            _cp_model
+                                .AddLessOrEqual(slot.bx + slot.bw - 1, top_x2)
+                                .OnlyEnforceIf(slot.is_rot[0]);
+                        }
+                        if (has_right_depot)
+                        {
+                            _cp_model.AddEquality(slot.bx + slot.bw, W_a)
+                                .OnlyEnforceIf(slot.is_rot[90]);
+                            _cp_model.AddGreaterOrEqual(slot.by, right_y1)
+                                .OnlyEnforceIf(slot.is_rot[90]);
+                            _cp_model
+                                .AddLessOrEqual(slot.by + slot.bh - 1, right_y2)
+                                .OnlyEnforceIf(slot.is_rot[90]);
+                        }
+                        if (has_bottom_depot)
+                        {
+                            _cp_model.AddEquality(slot.by, 0)
+                                .OnlyEnforceIf(slot.is_rot[180]);
+                            _cp_model.AddGreaterOrEqual(slot.bx, bot_x1)
+                                .OnlyEnforceIf(slot.is_rot[180]);
+                            _cp_model
+                                .AddLessOrEqual(slot.bx + slot.bw - 1, bot_x2)
+                                .OnlyEnforceIf(slot.is_rot[180]);
+                        }
+                        if (has_left_depot)
+                        {
+                            _cp_model.AddEquality(slot.bx, 0)
+                                .OnlyEnforceIf(slot.is_rot[270]);
+                            _cp_model.AddGreaterOrEqual(slot.by, left_y1)
+                                .OnlyEnforceIf(slot.is_rot[270]);
+                            _cp_model
+                                .AddLessOrEqual(slot.by + slot.bh - 1, left_y2)
+                                .OnlyEnforceIf(slot.is_rot[270]);
+                        }
+
+                        IntVar end_x = _cp_model.NewIntVar(Domain(0, W_a));
+                        IntVar end_y = _cp_model.NewIntVar(Domain(0, H_a));
+                        _cp_model.AddEquality(end_x, slot.bx + slot.bw);
+                        _cp_model.AddEquality(end_y, slot.by + slot.bh);
+                        IntervalVar ix = _cp_model.NewOptionalIntervalVar(
+                            slot.bx, slot.bw, end_x, slot.active);
+                        IntervalVar iy = _cp_model.NewOptionalIntervalVar(
+                            slot.by, slot.bh, end_y, slot.active);
+                        x_intervals.push_back(ix);
+                        y_intervals.push_back(iy);
+
+                        if (k + 1 < _area_slots[a].size())
+                        {
+                            _cp_model.AddGreaterOrEqual(
+                                slot.active, _area_slots[a][k + 1].active);
+                        }
                     }
-                    _cp_model.AddEquality(_factories_in_area[p][a], total_p);
+
+                    NoOverlap2DConstraint no_overlap =
+                        _cp_model.AddNoOverlap2D();
+                    for (size_t i = 0; i < x_intervals.size(); ++i)
+                    {
+                        no_overlap.AddRectangle(x_intervals[i], y_intervals[i]);
+                    }
+
+                    for (size_t p = 0; p < _products.size(); ++p)
+                    {
+                        LinearExpr total_p;
+                        for (size_t k = 0; k < _area_slots[a].size(); ++k)
+                        {
+                            total_p += _area_slots[a][k].is_prod[p];
+                        }
+                        _cp_model.AddEquality(_factories_in_area[p][a],
+                                              total_p);
+                    }
+                }
+                else
+                {
+                    // Cannot fit any factory blueprint in this area
+                    for (size_t p = 0; p < _products.size(); ++p)
+                    {
+                        _cp_model.AddEquality(_factories_in_area[p][a], 0);
+                    }
                 }
             }
             else
@@ -426,10 +504,11 @@ void Solver::declareConstraints()
                 LinearExpr c_space;
                 for (size_t i = 0; i < _products.size(); ++i)
                 {
-                    int64_t factory_area = static_cast<int64_t>(
-                        _products[i].factory_width * _products[i].factory_height);
-                    c_space +=
-                        LinearExpr::Term(_factories_in_area[i][a], factory_area);
+                    int64_t factory_area =
+                        static_cast<int64_t>(_products[i].factory_width *
+                                             _products[i].factory_height);
+                    c_space += LinearExpr::Term(_factories_in_area[i][a],
+                                                factory_area);
                 }
                 _cp_model.AddLessOrEqual(
                     c_space, static_cast<int64_t>(total_available_area));
@@ -440,8 +519,8 @@ void Solver::declareConstraints()
                 {
                     int64_t factory_depot =
                         static_cast<int64_t>(_products[i].factory_depot);
-                    c_depot +=
-                        LinearExpr::Term(_factories_in_area[i][a], factory_depot);
+                    c_depot += LinearExpr::Term(_factories_in_area[i][a],
+                                                factory_depot);
                 }
                 int64_t total_depot_in_area = static_cast<int64_t>(
                     _areas[a].pac_depot_width + _areas[a].pac_depot_height);
@@ -734,12 +813,10 @@ void Solver::displayAreaLayouts()
                 int W_0 = layout.bounding_width;
                 int H_0 = layout.bounding_height;
 
-                placed_summary.push_back(_products[p_idx].name + " [" +
-                                         std::to_string(bw) + "x" +
-                                         std::to_string(bh) + " @ (" +
-                                         std::to_string(bx) + "," +
-                                         std::to_string(by) + ") rot:" +
-                                         std::to_string(rot) + "°]");
+                placed_summary.push_back(
+                    _products[p_idx].name + " [" + std::to_string(bw) + "x" +
+                    std::to_string(bh) + " @ (" + std::to_string(bx) + "," +
+                    std::to_string(by) + ") rot:" + std::to_string(rot) + "°]");
 
                 // Place entities
                 for (const auto& entity : layout.entities)
@@ -778,11 +855,11 @@ void Solver::displayAreaLayouts()
                     int gy = by + ey;
                     int cx = gx + ew / 2;
                     int cy = gy + eh / 2;
-                    int fg = (entity.color_code == 33 ||
-                              entity.color_code == 160 ||
-                              entity.color_code == 34)
-                                 ? 15
-                                 : 16;
+                    int fg =
+                        (entity.color_code == 33 || entity.color_code == 160 ||
+                         entity.color_code == 34)
+                            ? 15
+                            : 16;
 
                     for (int dy = 0; dy < eh; ++dy)
                     {
@@ -933,12 +1010,15 @@ void Solver::displayAreaLayouts()
 
         if (active_count == 0)
         {
-            std::cout << "\n\033[1;36m================================================="
+            std::cout << "\n\033[1;36m========================================="
+                         "========"
                          "===============================\033[0m\n";
-            std::cout << "\033[1;37m  GLOBAL 2D INDUSTRIAL COMPLEX: AREA \033[1;33m"
-                      << _areas[a].name << " (" << W_a << "x" << H_a
-                      << ")\033[0m - \033[1;30mNO FACTORIES ALLOCATED\033[0m\n";
-            std::cout << "\033[1;36m==================================================="
+            std::cout
+                << "\033[1;37m  GLOBAL 2D INDUSTRIAL COMPLEX: AREA \033[1;33m"
+                << _areas[a].name << " (" << W_a << "x" << H_a
+                << ")\033[0m - \033[1;30mNO FACTORIES ALLOCATED\033[0m\n";
+            std::cout << "\033[1;36m==========================================="
+                         "========"
                          "=============================\033[0m\n";
             continue;
         }
@@ -962,7 +1042,8 @@ void Solver::displayAreaLayouts()
             if ((mask & CONV_NORTH) && (mask & CONV_SOUTH) &&
                 (mask & CONV_EAST) && (mask & CONV_WEST))
             {
-                ci.fg = 201; // Bright Magenta / Hot Pink for 4-way bridge crossings
+                ci.fg =
+                    201; // Bright Magenta / Hot Pink for 4-way bridge crossings
             }
             else if (!item.empty())
             {
@@ -1011,8 +1092,9 @@ void Solver::displayAreaLayouts()
         }
 
         // Print Global Area Map
-        std::cout << "\n\033[1;36m================================================="
-                     "===============================\033[0m\n";
+        std::cout
+            << "\n\033[1;36m================================================="
+               "===============================\033[0m\n";
         std::cout << "\033[1;37m  GLOBAL 2D INDUSTRIAL COMPLEX: AREA \033[1;33m"
                   << _areas[a].name << " (" << W_a << " x " << H_a
                   << ")\033[0m\n";
@@ -1022,8 +1104,9 @@ void Solver::displayAreaLayouts()
         {
             std::cout << "   • " << s << "\n";
         }
-        std::cout << "\033[1;36m==================================================="
-                     "=============================\033[0m\n\n";
+        std::cout
+            << "\033[1;36m==================================================="
+               "=============================\033[0m\n\n";
 
         // Top depot line banner
         bool has_top_depot = false;
@@ -1083,9 +1166,9 @@ void Solver::displayAreaLayouts()
                 {
                     if (it->second.bg >= 0)
                     {
-                        std::cout << "\033[48;5;" << it->second.bg << "m\033[38;5;"
-                                  << it->second.fg << "m" << it->second.text
-                                  << "\033[0m";
+                        std::cout << "\033[48;5;" << it->second.bg
+                                  << "m\033[38;5;" << it->second.fg << "m"
+                                  << it->second.text << "\033[0m";
                     }
                     else
                     {
@@ -1121,17 +1204,22 @@ void Solver::displayAreaLayouts()
         std::cout << "\n\n";
 
         // Print Facility Legend for Area
-        std::cout << "\033[1;36m---------------------------------------------------"
-                     "-----------------------------\033[0m\n";
-        std::cout << "\033[1;37m  AREA FACILITY LEGEND (Unified Colors)\033[0m\n";
-        std::cout << "\033[1;36m---------------------------------------------------"
-                     "-----------------------------\033[0m\n";
-        std::cout << "  \033[48;5;154m  \033[0m [U ] Unloader (Depot Docking) | "
-                  << "\033[48;5;208m  \033[0m [R ] Refining Unit | "
-                  << "\033[48;5;48m  \033[0m [F ] Fitting Unit\n";
-        std::cout << "  \033[48;5;177m  \033[0m [S ] Shredding Unit           | "
-                  << "\033[48;5;33m  \033[0m [PK] Packaging Unit | "
-                  << "\033[48;5;220m  \033[0m [PS] Protocol Stash\n";
+        std::cout
+            << "\033[1;36m---------------------------------------------------"
+               "-----------------------------\033[0m\n";
+        std::cout
+            << "\033[1;37m  AREA FACILITY LEGEND (Unified Colors)\033[0m\n";
+        std::cout
+            << "\033[1;36m---------------------------------------------------"
+               "-----------------------------\033[0m\n";
+        std::cout
+            << "  \033[48;5;154m  \033[0m [U ] Unloader (Depot Docking) | "
+            << "\033[48;5;208m  \033[0m [R ] Refining Unit | "
+            << "\033[48;5;48m  \033[0m [F ] Fitting Unit\n";
+        std::cout
+            << "  \033[48;5;177m  \033[0m [S ] Shredding Unit           | "
+            << "\033[48;5;33m  \033[0m [PK] Packaging Unit | "
+            << "\033[48;5;220m  \033[0m [PS] Protocol Stash\n";
         std::cout << "  \033[48;5;51m  \033[0m [SP] Splitter                 | "
                   << "\033[38;5;201m╬═\033[0m [BR] Bridge Crossing\n";
 
@@ -1152,9 +1240,12 @@ void Solver::displayAreaLayouts()
             }
             std::cout << "\n";
         }
-        std::cout << "  Turns: ╔═ ╗ ╚═ ╝ | Crossing (Bridge): \033[38;5;201m╬═\033[0m\n";
-        std::cout << "  Port Arrows: ▲ ▼ ► ◄ (Output = exit facility, Input = enter facility, colored by item)\n";
-        std::cout << "\033[1;36m==================================================="
-                     "=============================\033[0m\n\n";
+        std::cout << "  Turns: ╔═ ╗ ╚═ ╝ | Crossing (Bridge): "
+                     "\033[38;5;201m╬═\033[0m\n";
+        std::cout << "  Port Arrows: ▲ ▼ ► ◄ (Output = exit facility, Input = "
+                     "enter facility, colored by item)\n";
+        std::cout
+            << "\033[1;36m==================================================="
+               "=============================\033[0m\n\n";
     }
 }
