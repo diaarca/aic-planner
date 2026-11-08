@@ -14,20 +14,20 @@ These compact examples were generated from the self-contained [`data/test`](data
 
 Ferrium Ore passes through a refining unit (`R1`), then a fitting unit (`F1`), before the finished parts enter the protocol stash (`PS`). The unloader at the top connects to the depot boundary.
 
-![Ferrium Part factory blueprint with colored refining and fitting units, a protocol stash, and item-colored conveyors](docs/images/ferrium_part.svg)
+<img src="docs/images/ferrium_part.png" alt="Ferrium Part factory blueprint with colored refining and fitting units, a protocol stash, and item-colored conveyors" width="446">
 
-Facility backgrounds identify machine types. Conveyor lines connect the facilities; their colors and the active port arrows identify transported items. The legend below each image shows the belt colors.
+Facility backgrounds identify machine types. Conveyor lines connect the facilities; their colors and the active port arrows identify transported items.
 
 ```sh
 ./build/bin/aic_planner --product ferrium_part --blueprints-only data/test
 ```
 
 <details>
-<summary>SC Valley Battery — a compact multi-input factory (15×14 tiles, 6 batteries/minute)</summary>
+<summary>SC Valley Battery — a compact multi-input factory (17×13 tiles, 6 batteries/minute)</summary>
 
 This example combines Ferrium Part and Originium Powder production in a packaging unit (`PK`). It includes two refining units (`R1–R2`), two fitting units (`F1–F2`), three shredding units (`S1–S3`), and a protocol stash (`PS`).
 
-![SC Valley Battery factory blueprint with colored refining, fitting, shredding and packaging units, plus item-colored conveyors](docs/images/sc_valley_battery.svg)
+<img src="docs/images/sc_valley_battery.png" alt="SC Valley Battery factory blueprint with colored refining, fitting, shredding and packaging units, plus item-colored conveyors" width="668">
 
 ```sh
 ./build/bin/aic_planner --product sc_valley_battery --blueprints-only data/test
@@ -35,7 +35,7 @@ This example combines Ferrium Part and Originium Powder production in a packagin
 
 </details>
 
-Regenerate both images after building with `python3 tools/render_showcase.py`. The generator captures the solver’s terminal colors into self-contained SVG files using only Python’s standard library.
+These PNG previews are terminal captures. To refresh them, run the commands above and replace the corresponding PNG files in `docs/images/`.
 
 ## Build and run
 
