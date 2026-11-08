@@ -37,6 +37,42 @@ This example combines Ferrium Part and Originium Powder production in a packagin
 
 These PNG previews are terminal captures. To refresh them, run the commands above and replace the corresponding PNG files in `docs/images/`.
 
+## Install with Nix
+
+The Nix package builds and installs the planner together with its runtime dependencies and offline datasets. It is available on macOS and Linux. Nix must be installed; the flake commands below require the `nix-command` and `flakes` features enabled.
+
+From a checkout:
+
+```sh
+nix build
+./result/bin/aic_planner --validate ./result/share/aic-planner/data/valley_iv
+nix run . -- --help
+```
+
+`nix build` creates a `result` link to the installed package. The datasets are under `result/share/aic-planner/data`; the game-data attribution is installed alongside the code license under `result/share/doc/aic-planner`.
+
+Run directly from GitHub or install the command in your user profile:
+
+```sh
+nix run github:diaarca/aic-planner -- --help
+nix profile install github:diaarca/aic-planner
+# With a local or custom dataset:
+aic_planner --no-layouts data/valley_iv
+```
+
+The GitHub commands use `main`; append `/COMMIT_SHA` to pin a specific revision. For profile upgrades, use `nix profile list` to find the installed entry, then `nix profile upgrade NAME`.
+
+For Home Manager, add this repository as a flake input and include `inputs.aic-planner.packages.${pkgs.system}.default` in `home.packages`. The exported `overlays.default` also exposes `pkgs.aic_planner`.
+
+Without flakes, `default.nix` accepts a `pkgs` argument and exposes `aic_planner`, `default`, and `overlay`. With a configured `<nixpkgs>` search path:
+
+```sh
+nix-build -A aic_planner
+nix-env -f . -iA aic_planner
+```
+
+The legacy entry point uses the caller's Nixpkgs; the flake pins its dependencies in `flake.lock`. `nix flake check` builds the package and runs its offline regression suite. For contributing, use the development shell below, which shares the package's dependencies and adds build helpers.
+
 ## Build and run
 
 ```sh

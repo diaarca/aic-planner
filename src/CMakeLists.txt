@@ -41,3 +41,13 @@ target_link_libraries(aic_planner_lib PUBLIC
 add_executable(aic_planner main.cpp)
 
 target_link_libraries(aic_planner PRIVATE aic_planner_lib)
+
+include(GNUInstallDirs)
+install(TARGETS aic_planner RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/data/"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/aic-planner/data"
+    FILES_MATCHING PATTERN "*.json"
+)
+install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/NOTICE"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/aic-planner"
+)
