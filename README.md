@@ -6,6 +6,37 @@ Generate factory blueprints and optimize regional production for the Automated I
 
 The C++17 planner uses OR-Tools CP-SAT to place machines, route conveyors, and choose a regional production mix under resource, power, storage, and space constraints. Game data is imported separately, so planning works offline.
 
+## Blueprint examples
+
+These compact examples were generated from the self-contained [`data/test`](data/test) fixture. Each map shows one factory blueprint; the regional solver then chooses how many copies to produce and where to place them. Exact placements can vary between runs.
+
+**Ferrium Part — 6×10 tiles, 30 parts/minute**
+
+Ferrium Ore passes through a refining unit (`R1`), then a fitting unit (`F1`), before the finished parts enter the protocol stash (`PS`). The unloader at the top connects to the depot boundary.
+
+![Ferrium Part factory blueprint with colored refining and fitting units, a protocol stash, and item-colored conveyors](docs/images/ferrium_part.svg)
+
+Facility backgrounds identify machine types. Conveyor lines connect the facilities; their colors and the active port arrows identify transported items. The legend below each image shows the belt colors.
+
+```sh
+./build/bin/aic_planner --product ferrium_part --blueprints-only data/test
+```
+
+<details>
+<summary>SC Valley Battery — a compact multi-input factory (15×14 tiles, 6 batteries/minute)</summary>
+
+This example combines Ferrium Part and Originium Powder production in a packaging unit (`PK`). It includes two refining units (`R1–R2`), two fitting units (`F1–F2`), three shredding units (`S1–S3`), and a protocol stash (`PS`).
+
+![SC Valley Battery factory blueprint with colored refining, fitting, shredding and packaging units, plus item-colored conveyors](docs/images/sc_valley_battery.svg)
+
+```sh
+./build/bin/aic_planner --product sc_valley_battery --blueprints-only data/test
+```
+
+</details>
+
+Regenerate both images after building with `python3 tools/render_showcase.py`. The generator captures the solver’s terminal colors into self-contained SVG files using only Python’s standard library.
+
 ## Build and run
 
 ```sh
