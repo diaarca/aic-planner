@@ -1,0 +1,18 @@
+{
+  "base_power": 200.0,
+  "storage": 80000.0,
+  "resources": [
+    {
+      "item": "originium_ore",
+      "limit": 560.0
+    },
+    {
+      "item": "amethyst_ore",
+      "limit": 240.0
+    },
+    {
+      "item": "ferrium_ore",
+      "limit": 1080.0
+    }
+  ]
+}

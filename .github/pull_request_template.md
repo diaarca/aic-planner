@@ -1,21 +1,11 @@
-## Description
-Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context.
+## Problem and change
 
-Fixes # (issue)
+Describe the problem and the resulting behavior. Link the related issue when applicable.
 
-## Type of change
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] This change requires a documentation update
+## Validation
 
-## How Has This Been Tested?
-Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce.
+List the checks actually run and their results. Run `nix develop --command check` for the offline regression suite, and include the dataset and command for any additional solver checks.
 
-- [ ] Test A: Run solver on `data/valley_iv`
+## Limitations
 
-## Checklist:
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] My changes generate no new warnings
+Describe any compatibility changes, unsupported mechanics, or checks that could not be run.

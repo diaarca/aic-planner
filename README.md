@@ -1,71 +1,103 @@
 # AIC Planner
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An optimization tool for the Automated Industry Complex (AIC) system in **Arknights: Endfield**. 
+Generate factory blueprints and optimize regional production for the Automated Industry Complex in **Arknights: Endfield**.
 
-This project uses Mixed-Integer Linear Programming (MILP) and Google's [OR-Tools](https://developers.google.com/optimization) to maximize regional stock bill production by finding the optimal balance of products, facilities, and resource consumption.
+The C++17 planner uses OR-Tools CP-SAT to place machines, route conveyors, and choose a regional production mix under resource, power, storage, and space constraints. Game data is imported separately, so planning works offline.
 
-For a detailed breakdown of the math, see [MODEL.md](MODEL.md).
+## Blueprint examples
 
----
+These compact examples were generated from the self-contained [`data/test`](data/test) fixture. Each map shows one factory blueprint; the regional solver then chooses how many copies to produce and where to place them. Exact placements can vary between runs.
 
-## Installation and Build
+**Ferrium Part — 6×10 tiles, 30 parts/minute**
 
-This project uses [Nix](https://nixos.org/) to manage its development environment, ensuring all dependencies (OR-Tools, Clang, CSV Parser) are consistent across different systems.
+Ferrium Ore passes through a refining unit (`R1`), then a fitting unit (`F1`), before the finished parts enter the protocol stash (`PS`). The unloader at the top connects to the depot boundary.
 
-### 1. Enter the Development Shell
-From the project root, run:
-```bash
+![Ferrium Part factory blueprint with colored refining and fitting units, a protocol stash, and item-colored conveyors](docs/images/ferrium_part.svg)
+
+Facility backgrounds identify machine types. Conveyor lines connect the facilities; their colors and the active port arrows identify transported items. The legend below each image shows the belt colors.
+
+```sh
+./build/bin/aic_planner --product ferrium_part --blueprints-only data/test
+```
+
+<details>
+<summary>SC Valley Battery — a compact multi-input factory (15×14 tiles, 6 batteries/minute)</summary>
+
+This example combines Ferrium Part and Originium Powder production in a packaging unit (`PK`). It includes two refining units (`R1–R2`), two fitting units (`F1–F2`), three shredding units (`S1–S3`), and a protocol stash (`PS`).
+
+![SC Valley Battery factory blueprint with colored refining, fitting, shredding and packaging units, plus item-colored conveyors](docs/images/sc_valley_battery.svg)
+
+```sh
+./build/bin/aic_planner --product sc_valley_battery --blueprints-only data/test
+```
+
+</details>
+
+Regenerate both images after building with `python3 tools/render_showcase.py`. The generator captures the solver’s terminal colors into self-contained SVG files using only Python’s standard library.
+
+## Build and run
+
+```sh
 nix develop
-```
-
-### 2. Configurate the project
-```bash
 configure
-```
-
-### 3. Build the project
-```
 build
+./build/bin/aic_planner --validate data/test
+./build/bin/aic_planner --no-layouts data/test
+check
 ```
 
-### 4. Usage
-The executable is located in `build/bin/`. Run it by providing a path to a region's data folder:
-```bash
-./build/bin/aic_planner data/valley_iv
+The terminal project targets macOS and Linux. `check` configures, builds, and runs the offline regression suite.
+
+Run without `--no-layouts` to show the terminal factory maps. Diagnostics go to stderr; solutions go to stdout. Select diagnostic detail with `--log-level error|warning|info|debug`.
+
+`--validate` checks inputs and material balances without running placement. Invalid datasets and unsupported explicitly selected recipe chains fail validation. With automatic recipes, unsupported targets are reported and counted. Ordinary planning skips unsupported targets and fails if no blueprint can be generated or the regional solve fails. Use `--blueprints-only` to require successful placement and routing for every requested target.
+
+## Update facilities and recipes
+
+The repository contains a generated [catalog](data/catalog.json) from [AKEData](https://github.com/NagiYume/AKEDatabase). Refresh it after a game update:
+
+```sh
+python3 tools/import_catalog.py --latest > changes.json
 ```
-or by running the `run` command:
-```bash
-run data/valley_iv
+
+Pin a snapshot for reproducible updates, or regenerate it without network access after downloading it once:
+
+```sh
+python3 tools/import_catalog.py --version 1.6.4@11529267-11
+python3 tools/import_catalog.py --version 1.6.4@11529267-11 --offline
 ```
 
----
+Review the change report and catalog diff before committing. New facilities, recipes, and regional sale offers are discovered automatically. Catalog-backed regions use their imported market to build the complete product objective; no manual product/price list is needed. See [data maintenance](docs/DATA.md) for caching, conversion, compatibility names, and adding supported chains.
 
-## Data Structure
-The solver expects a directory containing the following CSV files:
-- `minerals.csv`: Resource limits.
-- `products.csv`: Manufacturing recipes and values.
-- `areas.csv`: Available space and static facilities.
-- `fuels.csv`: Power generation data.
-- `facilities.csv`: Power consumption per facility type.
-- `region.csv`: Global base power and storage capacity.
+## Datasets and supported behavior
 
----
+Inspect every imported regional sale price without running placement:
 
-## Roadmap
+```sh
+./build/bin/aic_planner --list-products data/valley_iv
+```
 
-We are actively working to improve the AIC Planner. Here is our wishlist for future features:
+- `data/test` is a fixed, self-contained regression fixture for SC Valley Battery and Ferrium Part production.
+- `data/valley_iv` uses every imported permanent sale product for Valley IV (14 in the checked-in snapshot), with prices and fuel specifications loaded from the shared catalog. Outposts default to maximum permanent unlocks. Area capacities and resource budgets are inherited project settings; infrastructure counts are not populated.
+- `region.json` stores external supplies, base power, inventory capacity, catalog location, and market region ID. `areas.json` stores building areas and depot segments. Catalog-backed markets derive targets, prices, and fuel data automatically. Self-contained test fixtures retain `products.json`, `fuels.json`, and `facilities.json`.
 
-- **Wuling Region Support** ([#7](https://github.com/diaarca/aic-planner/issues/7)): Add full support for the `Wulling` region, including data files and specific in-game logic.
-- **Dynamic Facility Logic** ([#8](https://github.com/diaarca/aic-planner/issues/8)): Shift from blueprint-based data to a facility-logic-based engine. This allows the solver to analyze individual facility attributes (size, recipes, inputs/outputs) to autonomously decide on the most profitable products and optimal placements.
-- **Solution Visualizer** ([#9](https://github.com/diaarca/aic-planner/issues/9)): Create a visual representation of the solver's output to help players build the optimized factory layout in-game.
-- **Nix Package Conversion** ([#14](https://github.com/diaarca/aic-planner/issues/14)): Convert the project to a Nix package to improve reproducibility and portability.
+The planner supports single-output solid-item recipes with multiple ingredients and productive recycling loops. The checked-in Valley IV dataset generates blueprints for all 14 sale products. Per-machine flow allocation checks belt capacities and distinct ports, including parallel belts. Pipe, environmental, and multiple-output mechanics remain unsupported.
 
-## Contributing
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community guidelines.
+Valley IV plant production uses a fixed **15×9 module**: two planting units around one seed picker, with a protocol stash below and an electric pylon beside it. Insert one flower into the picker once. The left planter replenishes the picker; the right planter exports plants. With the recorded two-second recipes and one circulating flower, the conservative output is **15 plants/minute**, without recurring external seeds or depot frontage. Connect the pylon to your power network.
 
-## License
-This project is licensed under the **MIT License** - see our [LICENSE](LICENSE) file for details.
+The same machine arrangement and short internal belts are preserved inside manufacturing blueprints; harvested plants feed downstream machines directly. Crop-dependent candidates are sized around one module per crop, and the regional solver can replicate the complete factory. A seed-only target retains the smaller picker/planter pair.
 
-**Arknights: Endfield** and its assests are the property of **GRYPHLINE. GRYPH FRONTIER PTELTD**, and this project claims no rights over the original game.
+```sh
+./build/bin/aic_planner --list-seed-loops data/valley_iv
+./build/bin/aic_planner --plant-loop sandleaf data/valley_iv
+./build/bin/aic_planner --seed-loop sandleaf_seed data/valley_iv
+./build/bin/aic_planner --blueprints-only --no-layouts data/valley_iv
+```
+
+Material-balance optimization, facility rounding, placement, and routing generate candidate factory designs. A regional `OPTIMAL` result is scoped to those candidates. Regional optimization defaults to 30 seconds and reports `FEASIBLE` when it finds a solution without proving optimality; increase it with `--solve-seconds 120`. See [the model overview](MODEL.md) and [the explanation of the original blueprint failures](docs/BLUEPRINT_FAILURES.md).
+
+## Contributing and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Code is MIT licensed. Game data and names belong to their respective rights holders; see [NOTICE](NOTICE) for data attribution.

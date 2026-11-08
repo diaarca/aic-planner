@@ -1,0 +1,1478 @@
+{
+  "DomainDataTable": {
+    "domain_1": {
+      "domainGoldItemId": "item_domain_tundra_coupon",
+      "domainId": "domain_1",
+      "domainName": {
+        "id": 3151625548749171950,
+        "text": ""
+      },
+      "machineModeTypeGroup": [
+        "normal"
+      ]
+    },
+    "domain_2": {
+      "domainGoldItemId": "item_domain_jinlong_coupon",
+      "domainId": "domain_2",
+      "domainName": {
+        "id": 6469201263056795755,
+        "text": ""
+      },
+      "machineModeTypeGroup": [
+        "gasliquid",
+        "gas",
+        "liquid",
+        "normal",
+        "gastrans",
+        "liquidtrans",
+        "solidtrans"
+      ]
+    }
+  },
+  "FactoryBatteryItemTable": {},
+  "FactoryBattleTable": {},
+  "FactoryBoxValveTable": {},
+  "FactoryBuildingTable": {
+    "component_mc_1": {
+      "id": "component_mc_1",
+      "inputPorts": [
+        {
+          "index": 0,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 1,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 2,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        }
+      ],
+      "name": {
+        "id": -8065374912336935076,
+        "text": ""
+      },
+      "outputPorts": [
+        {
+          "index": 0,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 2,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        }
+      ],
+      "placeDomains": [],
+      "powerConsume": 20,
+      "range": {
+        "depth": 3,
+        "height": 4,
+        "width": 3,
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    "furnance_1": {
+      "id": "furnance_1",
+      "inputPorts": [
+        {
+          "index": 0,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 1,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 2,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 3,
+          "isOutput": 0,
+          "isPipe": true,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 3,
+              "z": 1
+            },
+            "rotation": {
+              "x": 0,
+              "y": 90,
+              "z": 0
+            }
+          }
+        }
+      ],
+      "name": {
+        "id": -503494240391317693,
+        "text": ""
+      },
+      "outputPorts": [
+        {
+          "index": 0,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 2,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 3,
+          "isOutput": 1,
+          "isPipe": true,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 3,
+              "z": 1
+            },
+            "rotation": {
+              "x": 0,
+              "y": 90,
+              "z": 0
+            }
+          }
+        }
+      ],
+      "placeDomains": [],
+      "powerConsume": 5,
+      "range": {
+        "depth": 3,
+        "height": 4,
+        "width": 3,
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    "grinder_1": {
+      "id": "grinder_1",
+      "inputPorts": [
+        {
+          "index": 0,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 1,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 2,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        }
+      ],
+      "name": {
+        "id": -2759718786708393424,
+        "text": ""
+      },
+      "outputPorts": [
+        {
+          "index": 0,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 2,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        }
+      ],
+      "placeDomains": [],
+      "powerConsume": 5,
+      "range": {
+        "depth": 3,
+        "height": 4,
+        "width": 3,
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    "storager_1": {
+      "id": "storager_1",
+      "inputPorts": [
+        {
+          "index": 0,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 1,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 2,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 0,
+              "z": 2
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        }
+      ],
+      "name": {
+        "id": -8889490815914340577,
+        "text": ""
+      },
+      "outputPorts": [
+        {
+          "index": 0,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 2,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        }
+      ],
+      "placeDomains": [],
+      "powerConsume": 5,
+      "range": {
+        "depth": 3,
+        "height": 4,
+        "width": 3,
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    "tools_assebling_mc_1": {
+      "id": "tools_assebling_mc_1",
+      "inputPorts": [
+        {
+          "index": 0,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 3
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 1,
+              "y": 0,
+              "z": 3
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 2,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 0,
+              "z": 3
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 3,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 3,
+              "y": 0,
+              "z": 3
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 4,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 4,
+              "y": 0,
+              "z": 3
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 5,
+          "isOutput": 0,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 5,
+              "y": 0,
+              "z": 3
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        }
+      ],
+      "name": {
+        "id": -3641370763677533611,
+        "text": ""
+      },
+      "outputPorts": [
+        {
+          "index": 0,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 2,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 2,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 3,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 3,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 4,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 4,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        },
+        {
+          "index": 5,
+          "isOutput": 1,
+          "isPipe": false,
+          "trans": {
+            "position": {
+              "x": 5,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 180,
+              "z": 0
+            }
+          }
+        }
+      ],
+      "placeDomains": [],
+      "powerConsume": 20,
+      "range": {
+        "depth": 4,
+        "height": 4,
+        "width": 6,
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    }
+  },
+  "FactoryFluidConsumeTable": {},
+  "FactoryFluidContainerTable": {},
+  "FactoryFluidPumpInTable": {},
+  "FactoryFluidPumpOutTable": {},
+  "FactoryFluidSprayTable": {},
+  "FactoryFluidValveTable": {},
+  "FactoryFuelItemTable": {},
+  "FactoryGasContainerTable": {},
+  "FactoryGasMinerTable": {},
+  "FactoryGridBeltTable": {},
+  "FactoryGridConnecterTable": {},
+  "FactoryGridRouterTable": {},
+  "FactoryHubTable": {},
+  "FactoryItemTable": {},
+  "FactoryLiquidConnectorTable": {},
+  "FactoryLiquidPipeTable": {},
+  "FactoryLiquidRouterTable": {},
+  "FactoryMachineCraftGroupTable": {
+    "group_component_normal": {
+      "craftList": [
+        "component_activity_copper_poly_cmpt",
+        "component_iron_cmpt_1",
+        "component_glass_cmpt_1",
+        "component_iron_enr_cmpt_1",
+        "component_glass_enr_cmpt_1",
+        "component_copper_cmpt_1",
+        "component_copper_enr_cmpt_1",
+        "component_activity_xiranite_cmpt_1",
+        "component_activity_xiranite_enr_cmpt_1",
+        "component_copper_enr2_cmpt_1"
+      ],
+      "formulaGroupIdGroup": "group_component_normal",
+      "ingredientBufferBinding": [
+        {
+          "bindingPortIndices": [
+            0,
+            1,
+            2
+          ],
+          "pipePortPhaseType": []
+        }
+      ],
+      "msPerRound": 1000,
+      "outcomeBufferBinding": [
+        {
+          "bindingPortIndices": [
+            0,
+            1,
+            2
+          ],
+          "pipePortPhaseType": []
+        }
+      ],
+      "pipeIngredientBufferBinding": [],
+      "pipeOutcomeBufferBinding": []
+    },
+    "group_furnance_normal": {
+      "craftList": [
+        "furnance_activity_xiranite_nugget_1",
+        "furnance_activity_xiranite_enr_nugget_1",
+        "furnance_iron_nugget_1",
+        "furnance_iron_nugget_2",
+        "furnance_quartz_glass_1",
+        "furnance_quartz_glass_2",
+        "furnance_crystal_shell_1",
+        "furnance_crystal_shell_2",
+        "furnance_crystal_enr_1",
+        "furnance_iron_enr_1",
+        "furnance_quartz_enr_1",
+        "furnance_carbon_enr_1",
+        "furnance_crystal_enr_powder_1",
+        "furnance_crystal_powder_1",
+        "furnance_carbon_material_1",
+        "furnance_carbon_material_2",
+        "furnance_carbon_material_3",
+        "furnance_carbon_material_4",
+        "furnance_carbon_material_5",
+        "furnance_carbon_material_6",
+        "furnance_carbon_powder_1",
+        "furnance_carbon_powder_2",
+        "furnance_carbon_powder_3",
+        "furnance_carbon_powder_4",
+        "furnance_carbon_powder_5",
+        "furnance_carbon_enr_powder_1",
+        "furnance_carbon_enr_powder_2"
+      ],
+      "formulaGroupIdGroup": "group_furnance_normal",
+      "ingredientBufferBinding": [
+        {
+          "bindingPortIndices": [
+            0,
+            1,
+            2
+          ],
+          "pipePortPhaseType": []
+        }
+      ],
+      "msPerRound": 1000,
+      "outcomeBufferBinding": [
+        {
+          "bindingPortIndices": [
+            0,
+            1,
+            2
+          ],
+          "pipePortPhaseType": []
+        }
+      ],
+      "pipeIngredientBufferBinding": [],
+      "pipeOutcomeBufferBinding": []
+    },
+    "group_grinder_normal": {
+      "craftList": [
+        "grinder_copper_powder_1",
+        "grinder_iron_powder_1",
+        "grinder_quartz_powder_1",
+        "grinder_originium_powder_1",
+        "grinder_carbon_powder_1",
+        "grinder_crystal_powder_1",
+        "grinder_plant_moss_powder_1_1",
+        "grinder_plant_moss_powder_2_1",
+        "grinder_plant_moss_powder_3_1",
+        "grinder_plant_bbflower_powder_1_1",
+        "grinder_plant_grass_powder_1_1",
+        "grinder_plant_grass_powder_2_1",
+        "grinder_Ingredient_flour_1",
+        "grinder_Ingredient_paprika_1",
+        "grinder_Ingredient_starch_1",
+        "grinder_Ingredient_sugar_1",
+        "grinder_byproduct_potato_moss_1",
+        "grinder_byproduct_bean_moss_1"
+      ],
+      "formulaGroupIdGroup": "group_grinder_normal",
+      "ingredientBufferBinding": [
+        {
+          "bindingPortIndices": [
+            0,
+            1,
+            2
+          ],
+          "pipePortPhaseType": []
+        }
+      ],
+      "msPerRound": 1000,
+      "outcomeBufferBinding": [
+        {
+          "bindingPortIndices": [
+            0,
+            1,
+            2
+          ],
+          "pipePortPhaseType": []
+        }
+      ],
+      "pipeIngredientBufferBinding": [],
+      "pipeOutcomeBufferBinding": []
+    },
+    "group_tools_normal": {
+      "craftList": [
+        "tools_proc_activity_xiranite_copper_tool_1",
+        "tools_proc_activity_copper_poly_tool_1",
+        "tools_proc_activity_xiranite_lung",
+        "tools_proc_activity_xiranite_enr_lung",
+        "tools_proc_bomb_1_1",
+        "tools_proc_battery_1_1",
+        "tools_proc_battery_2_1",
+        "tools_proc_battery_3_1",
+        "tools_proc_rec_hp_4_1",
+        "tools_proc_rec_hp_5_1",
+        "tools_proc_food_4_1",
+        "tools_proc_food_5_1",
+        "tools_proc_battery_4_1",
+        "tools_proc_battery_5_1",
+        "tools_proc_activity_xiranite_hulu_1",
+        "tools_proc_activity_xiranite_enr_hulu_1",
+        "tools_proc_activity_xiranite_enr_tool_1",
+        "tools_proc_filter_core_2"
+      ],
+      "formulaGroupIdGroup": "group_tools_normal",
+      "ingredientBufferBinding": [
+        {
+          "bindingPortIndices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "pipePortPhaseType": []
+        }
+      ],
+      "msPerRound": 1000,
+      "outcomeBufferBinding": [
+        {
+          "bindingPortIndices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "pipePortPhaseType": []
+        }
+      ],
+      "pipeIngredientBufferBinding": [],
+      "pipeOutcomeBufferBinding": []
+    }
+  },
+  "FactoryMachineCraftModeTable": {},
+  "FactoryMachineCraftTable": {
+    "component_iron_cmpt_1": {
+      "buffers": {
+        "item_iron_cmpt": 0,
+        "item_iron_nugget": 0
+      },
+      "formulaDesc": {
+        "id": 2618382692978143977,
+        "text": ""
+      },
+      "formulaGroupId": "group_component_normal",
+      "gasEnv": 0,
+      "id": "component_iron_cmpt_1",
+      "ingredients": [
+        {
+          "group": [
+            {
+              "count": 1,
+              "id": "item_iron_nugget"
+            }
+          ]
+        }
+      ],
+      "machineId": "component_mc_1",
+      "outcomes": [
+        {
+          "group": [
+            {
+              "count": 1,
+              "id": "item_iron_cmpt"
+            }
+          ]
+        }
+      ],
+      "progressRound": 2,
+      "signal": 0,
+      "sortId": 1,
+      "totalProgress": 12000
+    },
+    "furnance_iron_nugget_1": {
+      "buffers": {
+        "item_iron_nugget": 0,
+        "item_iron_ore": 0
+      },
+      "formulaDesc": {
+        "id": 8235063256586092725,
+        "text": ""
+      },
+      "formulaGroupId": "group_furnance_normal",
+      "gasEnv": 0,
+      "id": "furnance_iron_nugget_1",
+      "ingredients": [
+        {
+          "group": [
+            {
+              "count": 1,
+              "id": "item_iron_ore"
+            }
+          ]
+        }
+      ],
+      "machineId": "furnance_1",
+      "outcomes": [
+        {
+          "group": [
+            {
+              "count": 1,
+              "id": "item_iron_nugget"
+            }
+          ]
+        }
+      ],
+      "progressRound": 2,
+      "signal": 0,
+      "sortId": 1,
+      "totalProgress": 12000
+    },
+    "grinder_originium_powder_1": {
+      "buffers": {
+        "item_originium_ore": 0,
+        "item_originium_powder": 0
+      },
+      "formulaDesc": {
+        "id": -2532777449329259049,
+        "text": ""
+      },
+      "formulaGroupId": "group_grinder_normal",
+      "gasEnv": 0,
+      "id": "grinder_originium_powder_1",
+      "ingredients": [
+        {
+          "group": [
+            {
+              "count": 1,
+              "id": "item_originium_ore"
+            }
+          ]
+        }
+      ],
+      "machineId": "grinder_1",
+      "outcomes": [
+        {
+          "group": [
+            {
+              "count": 1,
+              "id": "item_originium_powder"
+            }
+          ]
+        }
+      ],
+      "progressRound": 2,
+      "signal": 0,
+      "sortId": 4,
+      "totalProgress": 12000
+    },
+    "tools_proc_battery_2_1": {
+      "buffers": {
+        "item_iron_cmpt": 0,
+        "item_originium_powder": 0,
+        "item_proc_battery_2": 0
+      },
+      "formulaDesc": {
+        "id": 7031578729620814408,
+        "text": ""
+      },
+      "formulaGroupId": "group_tools_normal",
+      "gasEnv": 0,
+      "id": "tools_proc_battery_2_1",
+      "ingredients": [
+        {
+          "group": [
+            {
+              "count": 10,
+              "id": "item_iron_cmpt"
+            },
+            {
+              "count": 15,
+              "id": "item_originium_powder"
+            }
+          ]
+        }
+      ],
+      "machineId": "tools_assebling_mc_1",
+      "outcomes": [
+        {
+          "group": [
+            {
+              "count": 1,
+              "id": "item_proc_battery_2"
+            }
+          ]
+        }
+      ],
+      "progressRound": 10,
+      "signal": 0,
+      "sortId": 3,
+      "totalProgress": 60000
+    }
+  },
+  "FactoryMachineCrafterTable": {
+    "component_mc_1": {
+      "modeMap": [
+        {
+          "groupName": "group_component_normal",
+          "isEnvMode": false,
+          "modeName": "normal"
+        }
+      ],
+      "modeUnlockDefaultMap": {
+        "normal": true
+      }
+    },
+    "furnance_1": {
+      "modeMap": [
+        {
+          "groupName": "group_furnance_normal",
+          "isEnvMode": false,
+          "modeName": "normal"
+        },
+        {
+          "groupName": "group_furnance_liquid",
+          "isEnvMode": false,
+          "modeName": "liquid"
+        }
+      ],
+      "modeUnlockDefaultMap": {
+        "liquid": false,
+        "normal": true
+      }
+    },
+    "grinder_1": {
+      "modeMap": [
+        {
+          "groupName": "group_grinder_normal",
+          "isEnvMode": false,
+          "modeName": "normal"
+        }
+      ],
+      "modeUnlockDefaultMap": {
+        "normal": true
+      }
+    },
+    "tools_assebling_mc_1": {
+      "modeMap": [
+        {
+          "groupName": "group_tools_normal",
+          "isEnvMode": false,
+          "modeName": "normal"
+        }
+      ],
+      "modeUnlockDefaultMap": {
+        "normal": true
+      }
+    }
+  },
+  "FactoryMinerTable": {},
+  "FactoryPowerPoleTable": {},
+  "FactoryPowerStationTable": {},
+  "FactoryStoragerTable": {},
+  "FactoryTransmuterTable": {},
+  "FactoryUndergroundPipeTable": {},
+  "I18nTextTable_EN": {
+    "-2759718786708393424": "Shredding Unit",
+    "-3641370763677533611": "Packaging Unit",
+    "-377329690534775792": "LC Wuling Battery",
+    "-4547946061020742596": "Refugee Camp",
+    "-503494240391317693": "Refining Unit",
+    "-5417050067654650578": "Originium Ore",
+    "-554680815829661323": "Ferrium Ore",
+    "-7514907591745826392": "Originium Powder",
+    "-8065374912336935076": "Fitting Unit",
+    "-8889490815914340577": "Protocol Stash",
+    "2982387080565386942": "Valley Stock Bill",
+    "3151625548749171950": "Valley IV",
+    "3231317125183590003": "Ferrium Part",
+    "4482565585843345062": "Ferrium",
+    "4954907070425864865": "Sky King Flats Construction Site",
+    "5705109526810914380": "Xiranite Gourd",
+    "6469201263056795755": "Wuling",
+    "6479012288310380581": "SC Valley Battery",
+    "6604187044062776214": "Wuling Stock Bill"
+  },
+  "ItemTable": {
+    "item_activity_xiranite_hulu": {
+      "id": "item_activity_xiranite_hulu",
+      "name": {
+        "id": 5705109526810914380,
+        "text": ""
+      }
+    },
+    "item_domain_jinlong_coupon": {
+      "id": "item_domain_jinlong_coupon",
+      "name": {
+        "id": 6604187044062776214,
+        "text": ""
+      }
+    },
+    "item_domain_tundra_coupon": {
+      "id": "item_domain_tundra_coupon",
+      "name": {
+        "id": 2982387080565386942,
+        "text": ""
+      }
+    },
+    "item_iron_cmpt": {
+      "id": "item_iron_cmpt",
+      "name": {
+        "id": 3231317125183590003,
+        "text": ""
+      }
+    },
+    "item_iron_nugget": {
+      "id": "item_iron_nugget",
+      "name": {
+        "id": 4482565585843345062,
+        "text": ""
+      }
+    },
+    "item_iron_ore": {
+      "id": "item_iron_ore",
+      "name": {
+        "id": -554680815829661323,
+        "text": ""
+      }
+    },
+    "item_originium_ore": {
+      "id": "item_originium_ore",
+      "name": {
+        "id": -5417050067654650578,
+        "text": ""
+      }
+    },
+    "item_originium_powder": {
+      "id": "item_originium_powder",
+      "name": {
+        "id": -7514907591745826392,
+        "text": ""
+      }
+    },
+    "item_proc_battery_2": {
+      "id": "item_proc_battery_2",
+      "name": {
+        "id": 6479012288310380581,
+        "text": ""
+      }
+    },
+    "item_proc_battery_4": {
+      "id": "item_proc_battery_4",
+      "name": {
+        "id": -377329690534775792,
+        "text": ""
+      }
+    }
+  },
+  "SettlementBasicDataTable": {
+    "stm_hongs_1": {
+      "domainId": "domain_2",
+      "settlementId": "stm_hongs_1",
+      "settlementLevelMap": {
+        "1": {
+          "moneyMax": 135000,
+          "moneyPeriod": 78,
+          "settlementTradeItemMap": {
+            "item_activity_xiranite_hulu": {
+              "activityId": "activity_limited_formula_1",
+              "itemId": "item_activity_xiranite_hulu",
+              "rewardMoneyCount": 40,
+              "stmExp": 40,
+              "timeId": "",
+              "versionStart": "v1d2d0"
+            },
+            "item_proc_battery_4": {
+              "activityId": "",
+              "itemId": "item_proc_battery_4",
+              "rewardMoneyCount": 25,
+              "stmExp": 25,
+              "timeId": "",
+              "versionStart": "v0d8d0"
+            }
+          },
+          "timeId": ""
+        },
+        "2": {
+          "moneyMax": 1250000,
+          "moneyPeriod": 215,
+          "settlementTradeItemMap": {
+            "item_activity_xiranite_hulu": {
+              "activityId": "activity_limited_formula_1",
+              "itemId": "item_activity_xiranite_hulu",
+              "rewardMoneyCount": 40,
+              "stmExp": 40,
+              "timeId": "",
+              "versionStart": "v1d2d0"
+            },
+            "item_proc_battery_4": {
+              "activityId": "",
+              "itemId": "item_proc_battery_4",
+              "rewardMoneyCount": 25,
+              "stmExp": 25,
+              "timeId": "",
+              "versionStart": "v0d8d0"
+            }
+          },
+          "timeId": ""
+        },
+        "3": {
+          "moneyMax": 2600000,
+          "moneyPeriod": 448,
+          "settlementTradeItemMap": {
+            "item_activity_xiranite_hulu": {
+              "activityId": "activity_limited_formula_1",
+              "itemId": "item_activity_xiranite_hulu",
+              "rewardMoneyCount": 40,
+              "stmExp": 40,
+              "timeId": "",
+              "versionStart": "v1d2d0"
+            },
+            "item_proc_battery_4": {
+              "activityId": "",
+              "itemId": "item_proc_battery_4",
+              "rewardMoneyCount": 25,
+              "stmExp": 25,
+              "timeId": "",
+              "versionStart": "v1d1d0"
+            }
+          },
+          "timeId": ""
+        },
+        "4": {
+          "moneyMax": 3200000,
+          "moneyPeriod": 500,
+          "settlementTradeItemMap": {
+            "item_activity_xiranite_hulu": {
+              "activityId": "activity_limited_formula_1",
+              "itemId": "item_activity_xiranite_hulu",
+              "rewardMoneyCount": 40,
+              "stmExp": 40,
+              "timeId": "",
+              "versionStart": "v1d2d0"
+            },
+            "item_proc_battery_4": {
+              "activityId": "",
+              "itemId": "item_proc_battery_4",
+              "rewardMoneyCount": 25,
+              "stmExp": 25,
+              "timeId": "",
+              "versionStart": "v1d3d0"
+            }
+          },
+          "timeId": ""
+        }
+      },
+      "settlementName": {
+        "id": 4954907070425864865,
+        "text": ""
+      }
+    },
+    "stm_tundra_1": {
+      "domainId": "domain_1",
+      "settlementId": "stm_tundra_1",
+      "settlementLevelMap": {
+        "1": {
+          "moneyMax": 18000,
+          "moneyPeriod": 49,
+          "settlementTradeItemMap": {},
+          "timeId": ""
+        },
+        "2": {
+          "moneyMax": 125000,
+          "moneyPeriod": 70,
+          "settlementTradeItemMap": {
+            "item_proc_battery_2": {
+              "activityId": "",
+              "itemId": "item_proc_battery_2",
+              "rewardMoneyCount": 30,
+              "stmExp": 30,
+              "timeId": "",
+              "versionStart": "v0d8d0"
+            }
+          },
+          "timeId": ""
+        },
+        "3": {
+          "moneyMax": 420000,
+          "moneyPeriod": 222,
+          "settlementTradeItemMap": {
+            "item_proc_battery_2": {
+              "activityId": "",
+              "itemId": "item_proc_battery_2",
+              "rewardMoneyCount": 30,
+              "stmExp": 30,
+              "timeId": "",
+              "versionStart": "v0d8d0"
+            }
+          },
+          "timeId": ""
+        },
+        "4": {
+          "moneyMax": 2200000,
+          "moneyPeriod": 347,
+          "settlementTradeItemMap": {
+            "item_proc_battery_2": {
+              "activityId": "",
+              "itemId": "item_proc_battery_2",
+              "rewardMoneyCount": 30,
+              "stmExp": 30,
+              "timeId": "",
+              "versionStart": "v0d8d0"
+            }
+          },
+          "timeId": ""
+        }
+      },
+      "settlementName": {
+        "id": -4547946061020742596,
+        "text": ""
+      }
+    }
+  }
+}

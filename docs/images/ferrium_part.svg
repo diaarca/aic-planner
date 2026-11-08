@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="261" height="396" viewBox="0 0 261 396" role="img" aria-labelledby="title description">
+<title id="title">Ferrium Part blueprint</title>
+<desc id="description">Generated factory map with colored facilities, item-colored conveyors, port arrows, coordinate labels, and a belt color legend. The depot is above the factory.</desc>
+<rect width="261" height="396" rx="8" fill="#101820"/>
+<g font-family="DejaVu Sans Mono, Liberation Mono, monospace" font-size="15" xml:space="preserve">
+<text x="63" y="32" fill="#cdcd00" textLength="180" lengthAdjust="spacingAndGlyphs" font-weight="bold">════════════ [DEPOT]</text>
+<text x="18" y="50" fill="#dce5f2" textLength="153" lengthAdjust="spacingAndGlyphs">      0 1 2 3 4 5</text>
+<text x="18" y="68" fill="#dce5f2" textLength="153" lengthAdjust="spacingAndGlyphs">   ┌────────────┐</text>
+<text x="18" y="86" fill="#dce5f2" textLength="36" lengthAdjust="spacingAndGlyphs">9  │</text>
+<rect x="54" y="72" width="18" height="18" fill="#ff8700"/>
+<rect x="72" y="72" width="18" height="18" fill="#ff8700"/>
+<text x="72" y="86" fill="#ff8700" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="90" y="72" width="18" height="18" fill="#ff8700"/>
+<text x="108" y="86" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="126" y="86" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="144" y="86" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="162" y="86" fill="#dce5f2" textLength="45" lengthAdjust="spacingAndGlyphs">│   9</text>
+<text x="18" y="104" fill="#dce5f2" textLength="36" lengthAdjust="spacingAndGlyphs">8  │</text>
+<text x="54" y="104" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="72" y="104" fill="#ff8700" textLength="18" lengthAdjust="spacingAndGlyphs">╚═</text>
+<text x="90" y="104" fill="#ff8700" textLength="18" lengthAdjust="spacingAndGlyphs">══</text>
+<text x="108" y="104" fill="#ff8700" textLength="18" lengthAdjust="spacingAndGlyphs">╗ </text>
+<text x="126" y="104" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="144" y="104" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="162" y="104" fill="#dce5f2" textLength="45" lengthAdjust="spacingAndGlyphs">│   8</text>
+<text x="18" y="122" fill="#dce5f2" textLength="36" lengthAdjust="spacingAndGlyphs">7  │</text>
+<text x="54" y="122" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="72" y="122" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<rect x="90" y="108" width="18" height="18" fill="#00afff"/>
+<text x="90" y="122" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="108" y="108" width="18" height="18" fill="#00afff"/>
+<text x="108" y="122" fill="#ff8700" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="126" y="108" width="18" height="18" fill="#00afff"/>
+<text x="126" y="122" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<text x="144" y="122" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="162" y="122" fill="#dce5f2" textLength="45" lengthAdjust="spacingAndGlyphs">│   7</text>
+<text x="18" y="140" fill="#dce5f2" textLength="36" lengthAdjust="spacingAndGlyphs">6  │</text>
+<text x="54" y="140" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="72" y="140" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<rect x="90" y="126" width="18" height="18" fill="#00afff"/>
+<rect x="108" y="126" width="18" height="18" fill="#00afff"/>
+<text x="108" y="140" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">R1</text>
+<rect x="126" y="126" width="18" height="18" fill="#00afff"/>
+<text x="144" y="140" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="162" y="140" fill="#dce5f2" textLength="45" lengthAdjust="spacingAndGlyphs">│   6</text>
+<text x="18" y="158" fill="#dce5f2" textLength="36" lengthAdjust="spacingAndGlyphs">5  │</text>
+<text x="54" y="158" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="72" y="158" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<rect x="90" y="144" width="18" height="18" fill="#00afff"/>
+<text x="90" y="158" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="108" y="144" width="18" height="18" fill="#00afff"/>
+<text x="108" y="158" fill="#ffaf00" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="126" y="144" width="18" height="18" fill="#00afff"/>
+<text x="126" y="158" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<text x="144" y="158" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="162" y="158" fill="#dce5f2" textLength="45" lengthAdjust="spacingAndGlyphs">│   5</text>
+<text x="18" y="176" fill="#dce5f2" textLength="36" lengthAdjust="spacingAndGlyphs">4  │</text>
+<text x="54" y="176" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="72" y="176" fill="#ffaf00" textLength="18" lengthAdjust="spacingAndGlyphs">╔═</text>
+<text x="90" y="176" fill="#ffaf00" textLength="18" lengthAdjust="spacingAndGlyphs">══</text>
+<text x="108" y="176" fill="#ffaf00" textLength="18" lengthAdjust="spacingAndGlyphs">╝ </text>
+<text x="126" y="176" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="144" y="176" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="162" y="176" fill="#dce5f2" textLength="45" lengthAdjust="spacingAndGlyphs">│   4</text>
+<text x="18" y="194" fill="#dce5f2" textLength="36" lengthAdjust="spacingAndGlyphs">3  │</text>
+<rect x="54" y="180" width="18" height="18" fill="#00ff87"/>
+<text x="54" y="194" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="72" y="180" width="18" height="18" fill="#00ff87"/>
+<text x="72" y="194" fill="#ffaf00" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="90" y="180" width="18" height="18" fill="#00ff87"/>
+<text x="90" y="194" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="108" y="180" width="18" height="18" fill="#ffd700"/>
+<rect x="126" y="180" width="18" height="18" fill="#ffd700"/>
+<rect x="144" y="180" width="18" height="18" fill="#ffd700"/>
+<text x="162" y="194" fill="#dce5f2" textLength="45" lengthAdjust="spacingAndGlyphs">│   3</text>
+<text x="18" y="212" fill="#dce5f2" textLength="36" lengthAdjust="spacingAndGlyphs">2  │</text>
+<rect x="54" y="198" width="18" height="18" fill="#00ff87"/>
+<rect x="72" y="198" width="18" height="18" fill="#00ff87"/>
+<text x="72" y="212" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">F1</text>
+<rect x="90" y="198" width="18" height="18" fill="#00ff87"/>
+<rect x="108" y="198" width="18" height="18" fill="#ffd700"/>
+<rect x="126" y="198" width="18" height="18" fill="#ffd700"/>
+<text x="126" y="212" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">PS</text>
+<rect x="144" y="198" width="18" height="18" fill="#ffd700"/>
+<text x="162" y="212" fill="#dce5f2" textLength="45" lengthAdjust="spacingAndGlyphs">│   2</text>
+<text x="18" y="230" fill="#dce5f2" textLength="36" lengthAdjust="spacingAndGlyphs">1  │</text>
+<rect x="54" y="216" width="18" height="18" fill="#00ff87"/>
+<text x="54" y="230" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="72" y="216" width="18" height="18" fill="#00ff87"/>
+<text x="72" y="230" fill="#00ff87" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="90" y="216" width="18" height="18" fill="#00ff87"/>
+<text x="90" y="230" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">▼ </text>
+<rect x="108" y="216" width="18" height="18" fill="#ffd700"/>
+<text x="108" y="230" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">▲ </text>
+<rect x="126" y="216" width="18" height="18" fill="#ffd700"/>
+<text x="126" y="230" fill="#00ff87" textLength="18" lengthAdjust="spacingAndGlyphs">▲ </text>
+<rect x="144" y="216" width="18" height="18" fill="#ffd700"/>
+<text x="144" y="230" fill="#000000" textLength="18" lengthAdjust="spacingAndGlyphs">▲ </text>
+<text x="162" y="230" fill="#dce5f2" textLength="45" lengthAdjust="spacingAndGlyphs">│   1</text>
+<text x="18" y="248" fill="#dce5f2" textLength="36" lengthAdjust="spacingAndGlyphs">0  │</text>
+<text x="54" y="248" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="72" y="248" fill="#00ff87" textLength="18" lengthAdjust="spacingAndGlyphs">╚═</text>
+<text x="90" y="248" fill="#00ff87" textLength="18" lengthAdjust="spacingAndGlyphs">══</text>
+<text x="108" y="248" fill="#00ff87" textLength="18" lengthAdjust="spacingAndGlyphs">══</text>
+<text x="126" y="248" fill="#00ff87" textLength="18" lengthAdjust="spacingAndGlyphs">╝ </text>
+<text x="144" y="248" fill="#4e4e4e" textLength="18" lengthAdjust="spacingAndGlyphs"> ·</text>
+<text x="162" y="248" fill="#dce5f2" textLength="45" lengthAdjust="spacingAndGlyphs">│   0</text>
+<text x="18" y="266" fill="#dce5f2" textLength="153" lengthAdjust="spacingAndGlyphs">   └────────────┘</text>
+<text x="18" y="284" fill="#dce5f2" textLength="153" lengthAdjust="spacingAndGlyphs">      0 1 2 3 4 5</text>
+<text x="18" y="320" fill="#dce5f2" textLength="99" lengthAdjust="spacingAndGlyphs">Belt colors</text>
+<text x="18" y="338" fill="#ffaf00" textLength="90" lengthAdjust="spacingAndGlyphs">══ ferrium</text>
+<text x="18" y="356" fill="#ff8700" textLength="126" lengthAdjust="spacingAndGlyphs">══ ferrium_ore</text>
+<text x="18" y="374" fill="#00ff87" textLength="135" lengthAdjust="spacingAndGlyphs">══ ferrium_part</text>
+</g>
+</svg>

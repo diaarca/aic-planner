@@ -1,0 +1,13 @@
+AIC Planner source code is licensed under the MIT License (see LICENSE).
+
+Generated game mechanics and the small importer test sample are obtained from
+AKEData / AKEDatabase: https://github.com/NagiYume/AKEDatabase
+Data access guide: https://github.com/NagiYume/AKEDatabase/blob/main/DATA_API.md
+The selected snapshot and source hashes are recorded in data/catalog.json.
+
+Arknights: Endfield game data, item/facility names, and related intellectual
+property belong to Hypergryph / GRYPHLINE and their respective rights holders.
+The MIT license on this project's code does not claim ownership of game data.
+This fan project is not affiliated with or endorsed by the game's publisher.
+The importer is independently implemented; AKEDatabase application code is not
+included. AKEData describes its game-data use as learning, exchange, and research.
