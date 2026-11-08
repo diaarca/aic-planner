@@ -1,22 +1,18 @@
 #include "fuel.hpp"
-#include <csv.h>
-#include <fstream>
+#include "json_io.hpp"
 #include <iomanip>
 #include <iostream>
 #include <nlohmann/json.hpp>
 
-std::vector<Fuel> Fuel::readJSON(const std::string& filename)
+namespace aic
 {
-    std::ifstream file(filename);
-    if (!file.is_open())
-    {
-        throw std::runtime_error("Could not open fuels JSON file: " + filename);
-    }
-    nlohmann::json j;
-    file >> j;
+
+std::vector<Fuel> Fuel::read_json(const std::string &filename)
+{
+    const auto j = read_json_file(filename);
 
     std::vector<Fuel> fuels;
-    for (const auto& item : j)
+    for (const auto &item : j)
     {
         fuels.emplace_back(item.value("fuel", ""), item.value("power", 0.0),
                            item.value("duration", 0.0));
@@ -24,29 +20,14 @@ std::vector<Fuel> Fuel::readJSON(const std::string& filename)
     return fuels;
 }
 
-std::vector<Fuel> Fuel::readCSV(const std::string& filename)
+std::ostream &operator<<(std::ostream &os, const Fuel &f)
 {
-    std::vector<Fuel> fuels;
-    io::CSVReader<3> in(filename);
-    in.read_header(io::ignore_extra_column, "fuel", "power", "duration");
-    std::string name;
-    double power, duration;
-    while (in.read_row(name, power, duration))
-    {
-        fuels.emplace_back(name, power, duration);
-    }
-    return fuels;
-}
-
-std::ostream& operator<<(std::ostream& os, const Fuel& f)
-{
-    os << "Fuel: " << std::left << std::setw(20) << f.name
-       << " | Power: " << std::setw(10) << f.power
-       << " | Duration: " << f.duration;
+    os << "Fuel: " << std::left << std::setw(20) << f.name << " | Power: " << std::setw(10)
+       << f.power << " | Duration: " << f.duration;
     return os;
 }
 
-void Fuel::print_table(const std::vector<Fuel>& fuels)
+void Fuel::print_table(const std::vector<Fuel> &fuels)
 {
     std::cout << "\n--- Fuels Table ---\n";
     std::cout << std::left << std::setw(20) << "Fuel"
@@ -55,10 +36,11 @@ void Fuel::print_table(const std::vector<Fuel>& fuels)
               << "\n";
     std::cout << std::string(50, '-') << "\n";
 
-    for (const auto& f : fuels)
+    for (const auto &f : fuels)
     {
-        std::cout << std::left << std::setw(20) << f.name << " | "
-                  << std::setw(10) << f.power << " | " << std::setw(10)
-                  << f.duration << "\n";
+        std::cout << std::left << std::setw(20) << f.name << " | " << std::setw(10) << f.power
+                  << " | " << std::setw(10) << f.duration << "\n";
     }
 }
+
+} // namespace aic

@@ -5,6 +5,9 @@
 #include <string>
 #include <vector>
 
+namespace aic
+{
+
 struct StaticDepot
 {
     int x1 = 0;
@@ -23,9 +26,10 @@ struct Area
     std::map<std::string, double> area_facilities;
     std::vector<StaticDepot> static_depots;
 
-    static std::vector<Area> readJSON(const std::string& filename);
-    static std::vector<Area> readCSV(const std::string& filename);
+    static std::vector<Area> read_json(const std::string &filename);
 
-    friend std::ostream& operator<<(std::ostream& os, const Area& a);
-    static void print_table(const std::vector<Area>& areas);
+    friend std::ostream &operator<<(std::ostream &os, const Area &a);
+    static void print_table(const std::vector<Area> &areas);
 };
+
+} // namespace aic

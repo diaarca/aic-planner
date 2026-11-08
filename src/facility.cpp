@@ -1,11 +1,23 @@
 #include "facility.hpp"
-#include <csv.h>
-#include <fstream>
+#include "json_io.hpp"
 #include <iomanip>
 #include <iostream>
 #include <nlohmann/json.hpp>
 
-static void determinePortFacing(Port& p, int w, int h)
+namespace aic
+{
+
+static int tile(const nlohmann::json &item, const char *field)
+{
+    const auto &value = item.at(field);
+    if (!value.is_number_integer() || value.get<double>() < -1000000 ||
+        value.get<double>() > 1000000)
+        throw std::invalid_argument(std::string("Expected integer tile coordinate/dimension: ") +
+                                    field);
+    return value.get<int>();
+}
+
+static void determine_port_facing(Port &p, int w, int h)
 {
     if (p.y == 0)
     {
@@ -34,63 +46,74 @@ static void determinePortFacing(Port& p, int w, int h)
     }
 }
 
-std::vector<Facility> Facility::readJSON(const std::string& filename)
+std::vector<Facility> Facility::read_json(const std::string &filename)
 {
-    std::ifstream file(filename);
-    if (!file.is_open())
-    {
-        throw std::runtime_error("Could not open facilities JSON file: " +
-                                 filename);
-    }
-    nlohmann::json j;
-    file >> j;
+    const auto j = read_json_file(filename);
 
+    return from_json(j);
+}
+
+std::vector<Facility> Facility::from_json(const nlohmann::json &j)
+{
+    if (!j.is_array())
+        throw std::invalid_argument("Facilities must be an array");
     std::vector<Facility> facilities;
-    for (const auto& item : j)
+    for (const auto &item : j)
     {
         Facility f;
+        f.id = item.value("id", item.value("name", ""));
         f.name = item.value("name", "");
         f.power = item.value("power", 0.0);
-        f.width = item.value("width", 0);
-        f.height = item.value("height", 0);
+        f.width = tile(item, "width");
+        f.height = tile(item, "height");
 
-        if (item.contains("inputs"))
+        auto read_ports = [&](const char *side)
         {
-            for (const auto& in : item["inputs"])
+            std::vector<Port> ports;
+            if (!item.contains(side))
+                return ports;
+            for (const auto &value : item.at(side))
             {
-                Port p;
-                p.x = in.value("x", 0);
-                p.y = in.value("y", 0);
-                p.type = in.value("type", "product");
-                determinePortFacing(p, f.width, f.height);
-                f.inputs.push_back(p);
+                Port port;
+                port.x = tile(value, "x");
+                port.y = tile(value, "y");
+                const auto medium = value.value("type", "solid");
+                if (medium != "solid" && medium != "product" && medium != "liquid" &&
+                    medium != "pipe")
+                    throw std::invalid_argument("Unknown transport medium: " + medium);
+                port.type = (medium == "liquid" || medium == "pipe") ? TransportMedium::Pipe
+                                                                     : TransportMedium::Solid;
+                if (value.contains("fx") != value.contains("fy"))
+                    throw std::invalid_argument("Port needs both fx and fy");
+                if (value.contains("fx"))
+                {
+                    port.fx = tile(value, "fx");
+                    port.fy = tile(value, "fy");
+                }
+                else
+                    determine_port_facing(port, f.width, f.height);
+                ports.push_back(port);
             }
-        }
-
-        if (item.contains("outputs"))
-        {
-            for (const auto& out : item["outputs"])
-            {
-                Port p;
-                p.x = out.value("x", 0);
-                p.y = out.value("y", 0);
-                p.type = out.value("type", "product");
-                determinePortFacing(p, f.width, f.height);
-                f.outputs.push_back(p);
-            }
-        }
+            return ports;
+        };
+        f.inputs = read_ports("inputs");
+        f.outputs = read_ports("outputs");
 
         if (item.contains("recipes"))
         {
-            for (const auto& rec : item["recipes"])
+            for (const auto &rec : item["recipes"])
             {
                 Recipe r;
+                r.has_port_bindings = rec.contains("port_bindings");
+                r.id = rec.value("id", rec.value("name", ""));
+                r.unsupported_reasons =
+                    rec.value("unsupported_reasons", std::vector<std::string>{});
                 r.name = rec.value("name", "");
                 r.time = rec.value("time", 0.0);
 
                 if (rec.contains("ingredients"))
                 {
-                    for (const auto& ing : rec["ingredients"])
+                    for (const auto &ing : rec["ingredients"])
                     {
                         RecipeIngredient ri;
                         ri.item = ing.value("item", "");
@@ -101,7 +124,7 @@ std::vector<Facility> Facility::readJSON(const std::string& filename)
 
                 if (rec.contains("products"))
                 {
-                    for (const auto& prod : rec["products"])
+                    for (const auto &prod : rec["products"])
                     {
                         RecipeProduct rp;
                         rp.item = prod.value("item", "");
@@ -117,28 +140,13 @@ std::vector<Facility> Facility::readJSON(const std::string& filename)
     return facilities;
 }
 
-std::map<std::string, double> Facility::readCSV(const std::string& filename)
+std::ostream &operator<<(std::ostream &os, const Facility &f)
 {
-    std::map<std::string, double> results;
-    io::CSVReader<2> in(filename);
-    in.read_header(io::ignore_extra_column, "facility", "power");
-    std::string name;
-    double power;
-    while (in.read_row(name, power))
-    {
-        results[name] = power;
-    }
-    return results;
-}
-
-std::ostream& operator<<(std::ostream& os, const Facility& f)
-{
-    os << "Facility: " << std::left << std::setw(20) << f.name
-       << " | Power: " << f.power;
+    os << "Facility: " << std::left << std::setw(20) << f.name << " | Power: " << f.power;
     return os;
 }
 
-void Facility::print_table(const std::map<std::string, double>& facilities)
+void Facility::print_table(const std::map<std::string, double> &facilities)
 {
     std::cout << "\n--- Facilities Table ---\n";
     std::cout << std::left << std::setw(25) << "Facility"
@@ -146,9 +154,26 @@ void Facility::print_table(const std::map<std::string, double>& facilities)
               << "\n";
     std::cout << std::string(40, '-') << "\n";
 
-    for (const auto& [name, power] : facilities)
+    for (const auto &[name, power] : facilities)
     {
-        std::cout << std::left << std::setw(25) << name << " | "
-                  << std::setw(10) << power << "\n";
+        std::cout << std::left << std::setw(25) << name << " | " << std::setw(10) << power << "\n";
     }
 }
+
+double facility_power_consumption(const std::map<std::string, double> &counts,
+                                  const std::map<std::string, double> &power)
+{
+    double total = 0;
+    for (const auto &[name, count] : counts)
+    {
+        if (count == 0)
+            continue;
+        const auto found = power.find(name);
+        if (found == power.end())
+            throw std::invalid_argument("Missing power specification for facility: " + name);
+        total += count * found->second;
+    }
+    return total;
+}
+
+} // namespace aic

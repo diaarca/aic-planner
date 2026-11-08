@@ -7,47 +7,61 @@
 #include "product.hpp"
 #include "region.hpp"
 #include <map>
-#include <memory>
 #include <string>
 #include <vector>
 
-#include "blueprint_solver.hpp"
+#include "blueprint_layout.hpp"
 
-#define NB_HOUR_BEFORE_OVERFLOW 48
+namespace aic
+{
+
+inline constexpr int inventory_horizon_hours = 48;
 
 class Solver
 {
   public:
-    Solver(const std::vector<Product>& products,
-           const std::vector<Mineral>& mineral_limits,
-           const std::vector<Area>& areas,
-           const std::vector<Fuel>& fuels,
-           const std::map<std::string, double>& facility_power,
-           const Region& region);
-    void solve();
-    void setBlueprintLayouts(const std::map<std::string, BlueprintLayout>& layouts);
+    Solver(const std::vector<Product> &products, const std::vector<Mineral> &mineral_limits,
+           const std::vector<Area> &areas, const std::vector<Fuel> &fuels,
+           const std::map<std::string, double> &facility_power, const Region &region);
+    bool solve();
+    void set_time_limit(double seconds)
+    {
+        time_limit_seconds_ = seconds;
+    }
+    void set_render_layouts(bool enabled)
+    {
+        render_layouts_ = enabled;
+    }
+    double objective_value() const;
+    std::string status() const;
+    void set_blueprint_layouts(const std::map<std::string, BlueprintLayout> &layouts);
 
   private:
-    void instantiateVariables();
-    void declareConstraints();
-    bool solveModel();
-    void displaySolution();
-    void displayAreaLayouts();
+    bool render_layouts_ = true;
+    double time_limit_seconds_ = 30.0;
+    void instantiate_variables();
+    void instantiate_area_slots();
+    void declare_constraints();
+    void declare_production_constraints();
+    void declare_area_constraints();
+    void declare_power_constraints();
+    bool solve_model();
+    void display_solution();
+    void display_area_layouts();
 
-    const std::vector<Product>& _products;
-    const std::vector<Mineral>& _mineral_limits;
-    const std::vector<Area>& _areas;
-    const std::vector<Fuel>& _fuels;
-    const std::map<std::string, double>& _facility_power;
-    const Region& _region;
+    const std::vector<Product> &products_;
+    const std::vector<Mineral> &mineral_limits_;
+    const std::vector<Area> &areas_;
+    const std::vector<Fuel> &fuels_;
+    const std::map<std::string, double> &facility_power_;
+    const Region &region_;
 
-    operations_research::sat::CpModelBuilder _cp_model;
-    operations_research::sat::CpSolverResponse _response;
-    std::vector<operations_research::sat::IntVar> _qty_produced;
-    std::vector<std::vector<operations_research::sat::IntVar>>
-        _factories_in_area;
-    std::vector<operations_research::sat::IntVar> _num_batteries_active;
-    int64_t _obj_scale_factor;
+    operations_research::sat::CpModelBuilder cp_model_;
+    operations_research::sat::CpSolverResponse response_;
+    std::vector<operations_research::sat::IntVar> qty_produced_;
+    std::vector<std::vector<operations_research::sat::IntVar>> factories_in_area_;
+    std::vector<operations_research::sat::IntVar> num_batteries_active_;
+    int64_t obj_scale_factor_;
 
     struct AreaSlotVar
     {
@@ -59,6 +73,8 @@ class Solver
         operations_research::sat::IntVar bw;
         operations_research::sat::IntVar bh;
     };
-    std::map<std::string, BlueprintLayout> _product_layouts;
-    std::vector<std::vector<AreaSlotVar>> _area_slots;
+    std::map<std::string, BlueprintLayout> product_layouts_;
+    std::vector<std::vector<AreaSlotVar>> area_slots_;
 };
+
+} // namespace aic

@@ -287,5 +287,20 @@
         "type": "product"
       }
     ]
+  },
+  {
+    "name": "unloader",
+    "power": 0,
+    "width": 3,
+    "height": 1,
+    "outputs": [
+      {
+        "x": 1,
+        "y": 0,
+        "fx": 0,
+        "fy": -1,
+        "type": "solid"
+      }
+    ]
   }
 ]

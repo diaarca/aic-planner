@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+namespace aic
+{
+
 struct Fuel
 {
     std::string name;
@@ -13,9 +16,10 @@ struct Fuel
     Fuel() = default;
     Fuel(std::string n, double p, double d) : name(n), power(p), duration(d) {}
 
-    static std::vector<Fuel> readJSON(const std::string& filename);
-    static std::vector<Fuel> readCSV(const std::string& filename);
+    static std::vector<Fuel> read_json(const std::string &filename);
 
-    friend std::ostream& operator<<(std::ostream& os, const Fuel& f);
-    static void print_table(const std::vector<Fuel>& fuels);
+    friend std::ostream &operator<<(std::ostream &os, const Fuel &f);
+    static void print_table(const std::vector<Fuel> &fuels);
 };
+
+} // namespace aic

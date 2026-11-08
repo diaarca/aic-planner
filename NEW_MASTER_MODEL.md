@@ -2,7 +2,7 @@
 
 This document provides the detailed mathematical programming formulation for the **Regional Master Planning Problem** (Stage 2) of the AIC Planner. 
 
-In the 2-Stage Decomposition framework (Logic-Based Benders Decomposition), the Master Problem optimizes product portfolio selection, manufacturing rates, factory instance counts, fuel battery power balancing, and 2D spatial bin packing across regional industrial zones (Areas), parametrized by the exact blueprints determined in Stage 1.
+In the two-stage candidate-generation framework, the Master Problem optimizes product portfolio selection, manufacturing rates, factory instance counts, fuel battery power balancing, and 2D spatial bin packing across regional industrial zones (Areas), parameterized by the successfully routed candidate blueprints generated in Stage 1. This stage has no feedback loop to improve the blueprint portfolio; global factory-design optimality is not claimed.
 
 ---
 
@@ -36,7 +36,7 @@ In the 2-Stage Decomposition framework (Logic-Based Benders Decomposition), the 
 - $fa_a^{fa}$: fixed number of infrastructure facilities $fa \in \{\text{zipline}, \text{defense}, \text{mining\_rig}\}$ operating in area $a$.
 
 ### 2.3 Blueprint-Derived Factory Parameters (from Stage 1)
-For each producible product $p \in P_r$, Stage 1 supplies exact, verified parameters:
+For each producible product $p \in P_r$, Stage 1 supplies candidate-derived parameters:
 - $v_p$: market economic value of product $p$ (stock bills per unit).
 - $T_p$: production cycle duration for one product unit batch (seconds).
 - $m_p^m$: exact quantity of mineral $m$ consumed per unit batch of product $p$.
@@ -169,9 +169,12 @@ For each area $a \in A_r$ where 2D blueprints are active:
 8. **Symmetry Breaking**:
    $$active_{a, k} \ge active_{a, k+1} \quad \forall k \in \{1, \dots, K_a - 1\}$$
 
-### 5.7 Aggregated 1D Capacity Relaxation (Legacy Mode Fallback)
-When 2D layouts are not precomputed (e.g. legacy CSV mode or initial relaxed solves):
-- **Aggregate Area Footprint**:
-  $$\sum_{p \in P_r} \left( factory_p^a \cdot A_p \right) \le W_a \cdot H_a \quad \forall a \in A_r$$
-- **Aggregate Depot Line Capacity**:
-  $$\sum_{p \in P_r} \left( factory_p^a \cdot d_p \right) \le L_a^{depot} \quad \forall a \in A_r$$
+## Implementation bounds and precision
+
+The current implementation requires a routed candidate for every product passed to the regional solver. It has no aggregate-area fallback. It supports one continuous depot segment per edge. The slot bound is computed from candidate bounding areas and positive depot demands; a region with no usable docking capacity has zero slots.
+
+Production is integer items/minute. Factory domains are bounded by spatial and docking capacity. Gross fuel production is bounded by factory throughput; the inventory bound applies after subtracting fuel burned for power. The 48-hour inventory horizon is fixed. Consumption and per-unit cycle-time coefficients are scaled by one million, rounded upward; resource budgets are rounded downward. This avoids silently truncating fractional consumption. Prices have up to three decimal places, and integer-second fuel durations use bounded common-denominator scaling. `OPTIMAL` refers to this candidate-restricted model and conservative numerical representation. Runtime status is reported without converting feasible or unknown outcomes into optimality claims.
+
+## Search budget and symmetry
+
+Slots within an area are interchangeable. The implementation orders them by product/orientation group and orders identical groups along their depot edge; this removes equivalent permutations without excluding distinct physical packings. Inactive slot origins are fixed to zero. The regional search defaults to 30 seconds, configurable with `--solve-seconds`; a found incumbent without an optimality proof is reported as `FEASIBLE`.

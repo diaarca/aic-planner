@@ -6,21 +6,25 @@
 #include <string>
 #include <vector>
 
+namespace aic
+{
+
 struct Product
 {
     std::string name;
-    double value;
+    double value = 0;
     std::map<std::string, double> mineral_consumption;
-    double production_time;
+    double production_time = 0;
 
-    double factory_width;
-    double factory_height;
-    double factory_depot;
+    double factory_width = 0;
+    double factory_height = 0;
+    double factory_depot = 0;
     std::map<std::string, double> factory_facilities;
 
-    static std::vector<Product> readJSON(const std::string& filename);
-    static std::vector<Product> readCSV(const std::string& filename);
+    static std::vector<Product> read_json(const std::string &filename);
 
-    friend std::ostream& operator<<(std::ostream& os, const Product& p);
-    static void print_table(const std::vector<Product>& products);
+    friend std::ostream &operator<<(std::ostream &os, const Product &p);
+    static void print_table(const std::vector<Product> &products);
 };
+
+} // namespace aic

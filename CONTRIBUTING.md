@@ -1,55 +1,49 @@
 # Contributing to AIC Planner
 
-First off, thank you for considering contributing! It's people like you that make the open-source community such a great place to learn, inspire, and create.
+Issues and pull requests are welcome. For a bug, include the dataset, command, observed behavior, and expected result. For a new mechanic, explain its resource flow, geometry, and transport requirements.
 
-## How Can I Contribute?
+## Development
 
-### Reporting Bugs
-*   **Check the existing issues** to see if the bug has already been reported.
-*   If you can't find an open issue addressing the problem, **open a new one**.
-*   Include a **clear title and description**, as much relevant information as possible, and a **code sample** or an **executable test case** demonstrating the expected behavior that is not occurring.
+```sh
+nix develop
+check
+```
 
-### Suggesting Enhancements
-*   **Check the [Roadmap](README.md#roadmap)** to see our current wishlist and planned features.
-*   Open an issue with the tag `enhancement`.
-*   Explain the use case and why this feature would be useful for the project.
+`check` configures and builds the project, then runs all CTest checks without network access. The terminal application targets macOS and Linux. CMake can also be used directly when OR-Tools and its dependencies are already installed.
 
-### Pull Requests
-1.  **Fork** the repository and create your branch from `main`.
-2.  If you've added code that should be tested, **add tests**.
-3.  Ensure the project **builds** and runs correctly.
-4.  Ensure your code adheres to the **Coding Standards** below.
-5.  Open a Pull Request with a clear description of your changes.
+Format C++ before submitting changes:
 
-## Development Setup
+```sh
+clang-format -i src/*.cpp include/aic-planner/*.hpp tests/planner_tests.cpp
+```
 
-This project uses **Nix** and **Direnv** for dependency management.
-1.  Ensure you have Nix installed.
-2.  Run `direnv allow` or `nix develop` to enter the development environment.
-3.  Use the `Makefile` for building:
-    ```bash
-    make clean && make
-    ```
+Python importer and fixture tests can run independently:
 
-## Coding Standards
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
 
-To keep the codebase clean and consistent, please follow these rules:
+The project targets C++17, CMake, and OR-Tools. Use `snake_case` for functions, variables, and files, `PascalCase` for types, trailing underscores for private members, and the `aic` namespace. Use enums for closed concepts such as directions and transport media; keep facility and item identities data driven.
 
-### 1. Naming Conventions
-*   **Functions and Methods**: Use `snake_case` (e.g., `solve_model()`).
-*   **Variables and Members**: Use `snake_case`. Private members should end with an underscore (e.g., `products_`).
-*   **Classes and Structs**: Use `PascalCase` (e.g., `Product`).
-*   **Files**: Use `snake_case` or `PascalCase` consistently with existing files.
+## Architecture
 
-### 2. Namespacing
-*   All code must reside within the `aic` namespace.
+- `cli` parses commands and validates option combinations; `main` runs the selected workflow.
+- `Dataset` loads and validates offline JSON, including regional catalog selections. File parsing uses the shared `json_io` helper so diagnostics identify the source file.
+- `RecipeGraph` solves steady-state material balances, rejects unproductive cycles, and constructs autonomous seed-loop plans. The production-network builder allocates exact per-machine flows to distinct ports.
+- `BlueprintLayout` owns physical geometry, rotation, and coordinate normalization, independently of solver headers.
+- `plant_module` validates the fixed plant geometry and preserves its internal belt paths.
+- `BlueprintSolver` places machines; the conveyor router allocates physical routes and returns conflicts for placement retries.
+- `Solver` chooses regional production and packs generated candidate blueprints. Production, area packing, and power constraints are separate operations; reports use the same facility power calculation as optimization.
+- Terminal rendering is separate from optimization. Diagnostics use the logging interface and stderr.
 
-### 3. Domain Constants
-*   Do not use hardcoded strings for minerals or facilities. Use the constants defined in `include/aic-planner/constants.hpp`.
+Add behavior-focused regressions for new mechanics. Keep source conversion tests offline with small fixtures; do not make the test suite depend on live provider availability. For geometry, verify bounds, non-overlap, port directions, and conveyor clearance rather than an exact solver-generated arrangement. Fixed templates should match their specified geometry. CLI regressions cover invalid combinations and numeric options.
 
-### 4. Modern C++
-*   The project targets **C++17**.
-*   Prefer `std::unique_ptr` and `std::shared_ptr` over raw pointers for ownership.
+## Data changes
 
-## License
-By contributing, you agree that your contributions are licensed under our [LICENSE](LICENSE) (MIT).
+Follow [data maintenance](docs/DATA.md). Do not hand-edit generated `data/catalog.json`. Refresh it with the importer, review the version and change report, and validate affected regions. Keep local regression fixtures intentionally small and update them explicitly.
+
+Catalog-backed markets discover their sale products automatically. Keep all imported offers and their eligibility metadata even when a manufacturing mechanic is not yet supported. Adding support requires appropriate dependency, placement, routing, and model documentation changes. An unsupported recipe must produce an actionable diagnostic.
+
+## Pull requests
+
+Describe the problem, resulting behavior, and checks performed. Keep mechanical renames separate from algorithm changes where practical. Contributions to source code are provided under the MIT License; game data retains its rights-holder attribution in NOTICE. Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

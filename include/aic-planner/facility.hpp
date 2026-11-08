@@ -2,16 +2,26 @@
 
 #include <iostream>
 #include <map>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
+
+namespace aic
+{
+
+enum class TransportMedium
+{
+    Solid,
+    Pipe
+};
 
 struct Port
 {
     int x = 0;
     int y = 0;
-    std::string type; // "solid", "liquid", "product"
-    int fx = 0;       // facing direction dx
-    int fy = 0;       // facing direction dy
+    TransportMedium type = TransportMedium::Solid;
+    int fx = 0; // facing direction dx
+    int fy = 0; // facing direction dy
 };
 
 struct RecipeIngredient
@@ -28,6 +38,9 @@ struct RecipeProduct
 
 struct Recipe
 {
+    std::string id;
+    bool has_port_bindings = false;
+    std::vector<std::string> unsupported_reasons;
     std::string name;
     double time = 0;
     std::vector<RecipeIngredient> ingredients;
@@ -36,6 +49,7 @@ struct Recipe
 
 struct Facility
 {
+    std::string id;
     std::string name;
     double power = 0;
     int width = 0;
@@ -44,9 +58,14 @@ struct Facility
     std::vector<Port> outputs;
     std::vector<Recipe> recipes;
 
-    static std::vector<Facility> readJSON(const std::string& filename);
-    static std::map<std::string, double> readCSV(const std::string& filename);
+    static std::vector<Facility> read_json(const std::string &filename);
+    static std::vector<Facility> from_json(const nlohmann::json &data);
 
-    friend std::ostream& operator<<(std::ostream& os, const Facility& f);
-    static void print_table(const std::map<std::string, double>& facilities);
+    friend std::ostream &operator<<(std::ostream &os, const Facility &f);
+    static void print_table(const std::map<std::string, double> &facilities);
 };
+
+double facility_power_consumption(const std::map<std::string, double> &counts,
+                                  const std::map<std::string, double> &power);
+
+} // namespace aic

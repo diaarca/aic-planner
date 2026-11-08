@@ -5,18 +5,16 @@
     "pac_height": 70,
     "static_depots": [
       {
-        "x": 0,
-        "y": 35,
-        "type": "input",
-        "item_kind": "product",
-        "item_name": "originium"
+        "x1": 0,
+        "y1": 70,
+        "x2": 69,
+        "y2": 70
       },
       {
-        "x": 69,
-        "y": 35,
-        "type": "output",
-        "item_kind": "product",
-        "item_name": "hc_valley_battery"
+        "x1": 70,
+        "y1": 0,
+        "x2": 70,
+        "y2": 69
       }
     ]
   },
@@ -24,7 +22,14 @@
     "area": "valley_pass",
     "pac_width": 40,
     "pac_height": 40,
-    "static_depots": []
+    "static_depots": [
+      {
+        "x1": 0,
+        "y1": 40,
+        "x2": 39,
+        "y2": 40
+      }
+    ]
   },
   {
     "area": "aburrey_quarry",
@@ -36,7 +41,14 @@
     "area": "originium_science_park",
     "pac_width": 40,
     "pac_height": 40,
-    "static_depots": []
+    "static_depots": [
+      {
+        "x1": 0,
+        "y1": 40,
+        "x2": 39,
+        "y2": 40
+      }
+    ]
   },
   {
     "area": "origin_lodespring",
@@ -48,6 +60,13 @@
     "area": "power_plateau",
     "pac_width": 40,
     "pac_height": 40,
-    "static_depots": []
+    "static_depots": [
+      {
+        "x1": 0,
+        "y1": 40,
+        "x2": 39,
+        "y2": 40
+      }
+    ]
   }
 ]

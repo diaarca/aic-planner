@@ -1,3 +1,6 @@
 compile_commands.json
 build/
 .cache/
+
+__pycache__/
+changes.json

@@ -1,154 +1,133 @@
-#include "area.hpp"
 #include "blueprint_solver.hpp"
-#include "facility.hpp"
-#include "fuel.hpp"
-#include "mineral.hpp"
-#include "product.hpp"
-#include "region.hpp"
+#include "cli.hpp"
+#include "dataset.hpp"
+#include "logging.hpp"
 #include "solver.hpp"
-#include <filesystem>
+#include <algorithm>
 #include <iostream>
+#include <map>
 #include <string>
-#include <vector>
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
-    std::cout << std::unitbuf;
-    if (argc < 2)
-    {
-        std::cerr << "Usage: " << argv[0] << " <data_folder_path>" << std::endl;
-        return 1;
-    }
-    std::string folder_path = "";
-    bool force_csv = false;
-    for (int i = 1; i < argc; ++i)
-    {
-        std::string arg = argv[i];
-        if (arg == "--csv")
-        {
-            force_csv = true;
-        }
-        else if (folder_path.empty())
-        {
-            folder_path = arg;
-        }
-    }
-
-    if (folder_path.empty())
-    {
-        std::cerr << "Usage: " << argv[0] << " [--csv] <data_folder_path>" << std::endl;
-        return 1;
-    }
-
+    using namespace aic;
     try
     {
-        std::string json_region = folder_path + "/region.json";
-        bool is_json = !force_csv && std::filesystem::exists(json_region);
-
-        if (is_json)
+        const auto options = parse_cli(argc, argv);
+        log_level = options.verbosity;
+        if (options.command == Command::Help)
         {
-            std::cout << "Detected JSON dataset in: " << folder_path
-                      << std::endl;
-            Region region = Region::readJSON(folder_path + "/region.json");
-            std::vector<Mineral> minerals =
-                Mineral::readJSON(folder_path + "/minerals.json");
-            std::vector<Product> products =
-                Product::readJSON(folder_path + "/products.json");
-            std::vector<Area> areas =
-                Area::readJSON(folder_path + "/areas.json");
-            std::vector<Fuel> fuels =
-                Fuel::readJSON(folder_path + "/fuels.json");
-            std::vector<Facility> facilities =
-                Facility::readJSON(folder_path + "/facilities.json");
-
-            std::map<std::string, double> facility_powers;
-            for (const auto& f : facilities)
-            {
-                facility_powers[f.name] = f.power;
-            }
-
-            // STAGE 1: Blueprint Model (Subproblem)
-            std::cout << "\n==================================================="
-                         "====\n";
-            std::cout << "  STAGE 1: BLUEPRINT OPTIMIZATION (Subproblem)\n";
-            std::cout
-                << "=======================================================\n";
-            BlueprintSolver blueprint_solver(facilities, minerals, areas);
-            std::vector<Product> producible_products;
-            std::map<std::string, BlueprintLayout> product_layouts;
-
-            for (auto& prod : products)
+            std::cout << cli_usage();
+            return 0;
+        }
+        Dataset data = Dataset::load(options.folder);
+        if (!options.target.empty() && options.target_kind == TargetKind::SaleProduct)
+        {
+            const auto found = std::find_if(data.products.begin(), data.products.end(),
+                                            [&](const Product &product)
+                                            { return product.name == options.target; });
+            if (found == data.products.end())
+                throw std::invalid_argument("Unknown sale product: " + options.target);
+            data.products = {*found};
+        }
+        RecipeGraph graph(data.facilities, data.region.resources, data.automatic_recipes);
+        if (options.command == Command::ListSeedLoops)
+        {
+            std::cout << "Seed output | Initial flower in seed-picking unit (once)\n";
+            for (const auto &loop : graph.seed_loops())
+                std::cout << loop.seed << " | " << loop.flower << '\n';
+            return 0;
+        }
+        if (!options.target.empty() && options.target_kind != TargetKind::SaleProduct)
+        {
+            const auto loops = graph.seed_loops();
+            const auto found = std::find_if(
+                loops.begin(), loops.end(),
+                [&](const SeedLoopSpec &loop) {
+                    return options.target ==
+                           (options.target_kind == TargetKind::Plant ? loop.flower : loop.seed);
+                });
+            if (found == loops.end())
+                throw std::invalid_argument("Unknown plant/seed loop; use --list-seed-loops");
+            Product target;
+            target.name = options.target;
+            data.products = {target};
+        }
+        if (options.command == Command::ListProducts)
+        {
+            std::cout << "Sellable products (price per item"
+                      << (data.region.currency.empty() ? "" : ", " + data.region.currency) << ")\n";
+            for (const auto &product : data.products)
+                std::cout << product.name << ": " << product.value << '\n';
+            return 0;
+        }
+        if (options.command == Command::Validate)
+        {
+            size_t supported = 0;
+            for (const auto &product : data.products)
+                try
+                {
+                    graph.validate_target(product.name);
+                    ++supported;
+                }
+                catch (const std::invalid_argument &error)
+                {
+                    if (!data.automatic_recipes)
+                        throw;
+                    log(LogLevel::Warning, product.name, ": ", error.what());
+                }
+            log(LogLevel::Info, supported, " of ", data.products.size(),
+                " targets have balanced production plans");
+            log(LogLevel::Info, "Dataset valid; supported target dependencies checked");
+            return 0;
+        }
+        std::map<std::string, double> facility_powers;
+        for (const auto &facility : data.facilities)
+            facility_powers[facility.name] = facility.power;
+        BlueprintOptions blueprint_options;
+        blueprint_options.automatic_recipes = data.automatic_recipes;
+        BlueprintSolver blueprint_solver(data.facilities, data.region.resources, data.areas,
+                                         blueprint_options);
+        std::vector<Product> producible_products;
+        std::map<std::string, BlueprintLayout> layouts;
+        log(LogLevel::Info, "Generating factory blueprints for ", data.products.size(),
+            " product candidates");
+        for (auto product : data.products)
+        {
+            try
             {
                 BlueprintLayout layout;
-                if (blueprint_solver.solve(prod, layout))
+                if (blueprint_solver.solve(product, layout))
                 {
-                    std::cout << "\n[OK] Blueprint generated for: " << prod.name
-                              << "\n";
-                    layout.print();
-                    product_layouts[prod.name] = layout;
-                    producible_products.push_back(prod);
-                }
-                else
-                {
-                    std::cout << "[INFO] Product '" << prod.name
-                              << "' not producible with current facility "
-                                 "recipes. Skipping.\n";
+                    log(LogLevel::Info, "Blueprint generated for ", product.name);
+                    if (!options.no_layouts)
+                        layout.print();
+                    layouts[product.name] = std::move(layout);
+                    producible_products.push_back(product);
                 }
             }
-
-            // STAGE 2: Master Solver
-            std::cout << "\n==================================================="
-                         "====\n";
-            std::cout << "  STAGE 2: REGIONAL MASTER SOLVER\n";
-            std::cout
-                << "=======================================================\n";
-            if (producible_products.empty())
+            catch (const std::invalid_argument &error)
             {
-                std::cerr << "No producible products available for regional "
-                             "master solver."
-                          << std::endl;
-                return 1;
+                log(LogLevel::Warning, "Skipping ", product.name, ": ", error.what());
             }
-
-            Solver solver(producible_products, minerals, areas, fuels,
-                          facility_powers, region);
-            solver.setBlueprintLayouts(product_layouts);
-            solver.solve();
         }
-        else
-        {
-            // Legacy CSV flow
-            std::string region_file = folder_path + "/region.csv";
-            std::string minerals_file = folder_path + "/minerals.csv";
-            std::string products_file = folder_path + "/products.csv";
-            std::string areas_file = folder_path + "/areas.csv";
-            std::string fuels_file = folder_path + "/fuels.csv";
-            std::string facilities_file = folder_path + "/facilities.csv";
-
-            Region region = Region::readCSV(region_file);
-            std::vector<Mineral> minerals = Mineral::readCSV(minerals_file);
-            std::vector<Product> products = Product::readCSV(products_file);
-            std::vector<Area> areas = Area::readCSV(areas_file);
-            std::vector<Fuel> fuels = Fuel::readCSV(fuels_file);
-            std::map<std::string, double> facilities =
-                Facility::readCSV(facilities_file);
-
-            if (minerals.empty() || products.empty() || areas.empty() ||
-                fuels.empty() || facilities.empty())
-            {
-                throw std::runtime_error("Essential data (products or "
-                                         "minerals) is missing or empty.");
-            }
-
-            Solver solver(products, minerals, areas, fuels, facilities, region);
-            solver.solve();
-        }
+        log(LogLevel::Info, "Blueprints generated: ", producible_products.size(), "/",
+            data.products.size());
+        if (producible_products.empty())
+            throw std::runtime_error("No supported, successfully routed target blueprints");
+        if (options.blueprints_only)
+            return producible_products.size() == data.products.size() ? 0 : 1;
+        log(LogLevel::Info, "Optimizing regional production");
+        Solver solver(producible_products, data.region.resources, data.areas, data.fuels,
+                      facility_powers, data.region);
+        solver.set_blueprint_layouts(layouts);
+        solver.set_time_limit(options.solve_seconds);
+        solver.set_render_layouts(!options.no_layouts);
+        return solver.solve() ? 0 : 1;
     }
-    catch (const std::exception& e)
+    catch (const std::exception &error)
     {
-        std::cerr << "\nFATAL ERROR: " << e.what() << std::endl;
+        log(LogLevel::Error, error.what());
         return 1;
     }
-
-    return 0;
 }
