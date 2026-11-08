@@ -1,5 +1,5 @@
 {
-  description = "Development environment for AIC Planner";
+  description = "AIC Planner package and development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
@@ -12,11 +12,17 @@
       nixpkgs,
       flake-utils,
     }:
+    let
+      overlay = final: prev: {
+        aic_planner = final.callPackage ./package.nix { };
+      };
+    in
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = import nixpkgs {
           inherit system;
+          overlays = [ overlay ];
         };
 
         build-dir = "build";
@@ -57,28 +63,13 @@
         '';
       in
       {
+        packages.default = pkgs.aic_planner;
+        checks.default = pkgs.aic_planner;
+
         devShells.default = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [
-            cmake
-            pkg-config
-            gnumake
-            clang
-            python3
-          ];
-
+          inputsFrom = [ pkgs.aic_planner ];
+          nativeBuildInputs = [ pkgs.clang ];
           buildInputs = with pkgs; [
-            # dependencies
-            or-tools
-            nlohmann_json
-            protobuf
-            re2
-            zlib
-            bzip2
-            clp
-            cbc
-            glpk
-            eigen
-
             # custom commands
             configure
             build
@@ -92,5 +83,8 @@
           '';
         };
       }
-    );
+    )
+    // {
+      overlays.default = overlay;
+    };
 }
