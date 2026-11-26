@@ -28,6 +28,7 @@ struct CliOptions
     bool no_layouts = false;
     bool blueprints_only = false;
     double solve_seconds = 30.0;
+    double compact_seconds = 0.0;
     LogLevel verbosity = LogLevel::Info;
 };
 CliOptions parse_cli(int argc, const char *const argv[]);

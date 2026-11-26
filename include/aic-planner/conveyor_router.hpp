@@ -1,5 +1,6 @@
 #pragma once
 #include "blueprint_layout.hpp"
+#include <chrono>
 
 namespace aic
 {
@@ -21,6 +22,7 @@ struct RoutingResult
     std::vector<std::vector<int>> conflict_groups;
 };
 // Routes a placed blueprint; returns conflicts for the placement model's retry cuts.
-RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &streams,
-                              int grid_width, int grid_height);
+RoutingResult route_conveyors(
+    BlueprintLayout &layout, std::vector<StreamLink> &streams, int grid_width, int grid_height,
+    std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max());
 } // namespace aic

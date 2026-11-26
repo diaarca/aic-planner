@@ -76,7 +76,11 @@ Datasets that enable the Electric Pylon with catalog supply-range metadata recei
 
 Existing plant-module pylons contribute coverage. A bounded CP-SAT search chooses additional pylon sites that clear facilities, conveyors, and reserved port approaches, preferring fewer pylons and sites inside the routed footprint. If the search finds no valid set, placement retries. The final blueprint dimensions and facility counts include the added pylons. This models local coverage within the PAC areas. Pylon transmission and external connections are handled in game.
 
-## 7. Validation and limits
+## 7. Optional footprint compaction
+
+Once a layout passes routing and power coverage, `--compact-seconds` starts a separate wall-clock budget for that blueprint. The placement search uses the bounding box of machines and active belt endpoints as a lower bound. It ranks complete layouts by bounding area, then by the sum of width and height. Each candidate must fit within the initial routed width and height and pass routing and power coverage. The best completed layout supplies the footprint and pylon count to the regional solver. The fixed standalone plant template has no placement freedom.
+
+## 8. Validation and limits
 
 Regression coverage checks:
 
@@ -87,6 +91,7 @@ Regression coverage checks:
 - A standalone Sandleaf seed blueprint with zero depot frontage and 30 seeds/minute.
 - All four Valley IV plants use the exact 15×9 template, pylon, and eight belt cells.
 - Pylon coverage, clearance, and regional facility counts for Valley IV factory and seed-loop blueprints.
+- Compaction keeps a valid layout when its budget expires and preserves seed-loop startup stock and throughput.
 - Physical generation/routing of every Valley IV blueprint, without fixing a particular arrangement.
 
 Pipe, environmental, and multiple-output mechanics are retained by the importer but remain outside this implementation. A routed blueprint is verified against these modeled constraints, not an in-game simulation. Startup inventory and electrical power must be provided by the player.

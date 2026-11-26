@@ -6,11 +6,13 @@
 #include "power_coverage.hpp"
 #include "production_network.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <queue>
 #include <random>
 
@@ -26,6 +28,7 @@ BlueprintSolver::BlueprintSolver(const std::vector<Facility> &facilities,
     : graph_(facilities, minerals, options.automatic_recipes), options_(options), areas_(areas)
 {
     if (!std::isfinite(options.placement_seconds) || options.placement_seconds < 0 ||
+        !std::isfinite(options.compact_seconds) || options.compact_seconds < 0 ||
         options.max_attempts < 1)
         throw std::invalid_argument("Invalid blueprint search options");
     const auto pylon = std::find_if(facilities.begin(), facilities.end(),
@@ -667,19 +670,42 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
 
     const int max_conveyor_attempts = options_.max_attempts;
     bool power_coverage_failed = false;
-
-    for (int attempt = 1; attempt <= max_conveyor_attempts; ++attempt)
+    using Clock = std::chrono::steady_clock;
+    auto deadline = Clock::time_point::max();
+    std::optional<BlueprintLayout> best_layout;
+    std::pair<int, int> initial_dimensions;
+    LinearExpr placement_score;
+    const int64_t area_weight = int64_t{grid_w} + grid_h + 1;
+    auto footprint_score = [&](const BlueprintLayout &candidate)
     {
+        const int64_t w = candidate.bounding_width, h = candidate.bounding_height;
+        return area_weight * w * h + w + h;
+    };
+
+    for (int attempt = 1; best_layout || attempt <= max_conveyor_attempts; ++attempt)
+    {
+        if (best_layout && Clock::now() >= deadline)
+            break;
         params.set_random_seed(42 + attempt * 17);
+        auto placement_model = model.Build();
+        if (best_layout)
+        {
+            const double remaining = std::chrono::duration<double>(deadline - Clock::now()).count();
+            if (remaining <= 0)
+                break;
+            params.set_max_time_in_seconds(remaining);
+        }
         Model cp_model;
         cp_model.Add(NewSatParameters(params));
-        CpSolverResponse response = SolveCpModel(model.Build(), &cp_model);
+        CpSolverResponse response = SolveCpModel(placement_model, &cp_model);
 
         if (response.status() != CpSolverStatus::OPTIMAL &&
             response.status() != CpSolverStatus::FEASIBLE)
         {
             if (response.status() == CpSolverStatus::MODEL_INVALID)
                 throw std::runtime_error("Invalid blueprint model: " + response.solution_info());
+            if (best_layout)
+                break;
             status_ = response.status() == CpSolverStatus::INFEASIBLE ? BlueprintStatus::Infeasible
                                                                       : BlueprintStatus::Timeout;
             log(LogLevel::Warning, product.name, ": ",
@@ -744,7 +770,7 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         }
 
         fix_plant_paths(network, layout, standalone_plant);
-        const auto routing = route_conveyors(layout, streams, grid_w, grid_h);
+        const auto routing = route_conveyors(layout, streams, grid_w, grid_h, deadline);
         const auto &conflicted_stream_indices = routing.conflicted_stream_indices;
         bool complete = routing.feasible;
         if (complete && electric_pylon_)
@@ -754,37 +780,60 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
                 reserved_cells.emplace_back(SolutionIntegerValue(response, x),
                                             SolutionIntegerValue(response, y));
             complete = place_electric_pylons(layout, network, *electric_pylon_, grid_w, grid_h,
-                                             reserved_cells);
+                                             reserved_cells, deadline);
         }
+        if (best_layout && Clock::now() >= deadline)
+            break;
         if (complete)
         {
-            if (attempt > 1)
+            if (!best_layout && attempt > 1)
             {
                 log(LogLevel::Debug, "Routing feasible for ", product.name, " on attempt ",
                     attempt);
             }
 
-            product.factory_width = SolutionIntegerValue(response, bbox_w);
-            product.factory_height = SolutionIntegerValue(response, bbox_h);
-            product.factory_depot = total_unloaders * unloader_width;
-
             layout.product_name = product.name;
-            layout.bounding_width = static_cast<int>(product.factory_width);
-            layout.bounding_height = static_cast<int>(product.factory_height);
-            layout.depot_length = static_cast<int>(product.factory_depot);
-
+            layout.depot_length = total_unloaders * unloader_width;
             layout.normalize();
-            product.factory_width = layout.bounding_width;
-            product.factory_height = layout.bounding_height;
-            if (electric_pylon_ && layout.entities.size() > entities.size())
-                product.factory_facilities[electric_pylon_->name] +=
-                    layout.entities.size() - entities.size();
 
-            status_ = BlueprintStatus::Success;
-            return true;
+            if (!best_layout)
+            {
+                best_layout = layout;
+                if (options_.compact_seconds == 0 || standalone_plant)
+                    break;
+
+                const auto now = Clock::now();
+                const std::chrono::duration<double> budget(options_.compact_seconds);
+                if (budget < deadline - now)
+                    deadline = now + std::chrono::duration_cast<Clock::duration>(budget);
+                initial_dimensions = {best_layout->bounding_width, best_layout->bounding_height};
+                params.set_stop_after_first_solution(true);
+                model.ClearHints();
+                model.AddLessOrEqual(bbox_w, initial_dimensions.first);
+                model.AddLessOrEqual(bbox_h, initial_dimensions.second);
+                for (const auto &port : port_accesses)
+                {
+                    model.AddLessOrEqual(min_x, port.ax);
+                    model.AddLessOrEqual(min_y, port.ay);
+                    model.AddGreaterThan(max_x, port.ax);
+                    model.AddGreaterThan(max_y, port.ay);
+                }
+                // The machines and their belt endpoints give a lower bound on the routed area.
+                const auto area = model.NewIntVar(Domain(total_fac_area, int64_t{grid_w} * grid_h));
+                model.AddMultiplicationEquality(area, {bbox_w, bbox_h});
+                placement_score = area * area_weight + bbox_w + bbox_h;
+                model.Minimize(placement_score);
+                model.AddLessThan(placement_score, footprint_score(*best_layout));
+            }
+            else if (layout.bounding_width <= initial_dimensions.first &&
+                     layout.bounding_height <= initial_dimensions.second &&
+                     footprint_score(layout) < footprint_score(*best_layout))
+            {
+                best_layout = layout;
+                model.AddLessThan(placement_score, footprint_score(*best_layout));
+            }
         }
-
-        if (routing.feasible)
+        else if (routing.feasible)
         {
             power_coverage_failed = true;
             log(LogLevel::Debug, product.name,
@@ -829,6 +878,8 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
 
         // Global cut: forbid the exact full placement
         model.AddBoolOr(not_matches);
+        if (complete)
+            continue;
 
         // Targeted cuts on conflicted streams (Recommendation 5: Relative displacement cuts)
         for (int s_idx : conflicted_stream_indices)
@@ -895,6 +946,24 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
                 }
             }
         }
+    }
+
+    if (best_layout)
+    {
+        layout = std::move(*best_layout);
+        if (initial_dimensions.first > 0 &&
+            initial_dimensions != std::make_pair(layout.bounding_width, layout.bounding_height))
+            log(LogLevel::Info, product.name, ": compacted blueprint from ",
+                initial_dimensions.first, " x ", initial_dimensions.second, " to ",
+                layout.bounding_width, " x ", layout.bounding_height);
+        product.factory_width = layout.bounding_width;
+        product.factory_height = layout.bounding_height;
+        product.factory_depot = layout.depot_length;
+        if (electric_pylon_ && layout.entities.size() > entities.size())
+            product.factory_facilities[electric_pylon_->name] +=
+                layout.entities.size() - entities.size();
+        status_ = BlueprintStatus::Success;
+        return true;
     }
 
     status_ = BlueprintStatus::RoutingExhausted;
