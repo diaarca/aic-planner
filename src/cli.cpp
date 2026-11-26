@@ -8,7 +8,8 @@ std::string cli_usage()
 {
     return "Usage: aic_planner [--log-level error|warning|info|debug] [--validate] [--no-layouts] "
            "[--list-products] [--product name] [--blueprints-only] [--solve-seconds seconds] "
-           "[--seed-loop seed] [--plant-loop plant] [--list-seed-loops] <data_folder>\n";
+           "[--compact-seconds seconds] [--seed-loop seed] [--plant-loop plant] "
+           "[--list-seed-loops] <data_folder>\n";
 }
 
 CliOptions parse_cli(int argc, const char *const argv[])
@@ -48,21 +49,24 @@ CliOptions parse_cli(int argc, const char *const argv[])
         }
         if (argument == "--log-level")
             options.verbosity = parse_log_level(value());
-        else if (argument == "--solve-seconds")
+        else if (argument == "--solve-seconds" || argument == "--compact-seconds")
         {
             const auto text = value();
             size_t parsed = 0;
+            double seconds;
+            const auto error = argument + " must be a positive finite number";
             try
             {
-                options.solve_seconds = std::stod(text, &parsed);
+                seconds = std::stod(text, &parsed);
             }
             catch (const std::logic_error &)
             {
-                throw std::invalid_argument("--solve-seconds must be a positive finite number");
+                throw std::invalid_argument(error);
             }
-            if (parsed != text.size() || !std::isfinite(options.solve_seconds) ||
-                options.solve_seconds <= 0)
-                throw std::invalid_argument("--solve-seconds must be a positive finite number");
+            if (parsed != text.size() || !std::isfinite(seconds) || seconds <= 0)
+                throw std::invalid_argument(error);
+            (argument == "--solve-seconds" ? options.solve_seconds : options.compact_seconds) =
+                seconds;
         }
         else if (argument == "--product")
             set_target(TargetKind::SaleProduct, value());

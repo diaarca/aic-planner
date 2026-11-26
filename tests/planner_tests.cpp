@@ -62,7 +62,13 @@ void command_line()
         },
         "cannot be combined");
     for (const auto *seconds : {"0", "-1", "nan", "inf", "1e999", "invalid", "3s"})
+    {
         rejects([&] { parse({"--solve-seconds", seconds, "data/test"}); }, "positive finite");
+        rejects([&] { parse({"--compact-seconds", seconds, "data/test"}); }, "positive finite");
+    }
+    const auto compact = parse({"--compact-seconds", "0.5", "--solve-seconds", "12", "data/test"});
+    check(compact.compact_seconds == 0.5 && compact.solve_seconds == 12,
+          "Blueprint compaction and regional solving have separate time limits");
 }
 
 void layout_geometry()
@@ -408,6 +414,7 @@ void standalone_seed_loop(const Dataset &data)
     check(export_belts == 1, "One spare-seed export connection");
     BlueprintOptions options;
     options.automatic_recipes = true;
+    options.compact_seconds = 1.0;
     BlueprintSolver solver(data.facilities, data.region.resources, data.areas, options);
     Product target;
     target.name = "sandleaf_seed";
@@ -417,6 +424,12 @@ void standalone_seed_loop(const Dataset &data)
           "The standalone seed blueprint reports its 30 seeds/minute export rate");
     check(layout.depot_length == 0 && target.mineral_consumption.empty(),
           "No depot frontage or ongoing external material supply");
+    check(layout.startup_stock == plan.startup_stock && layout.startup_items == plan.startup_items,
+          "Compaction preserves the startup inventory");
+    check(layout.is_conveyor_feasible && !layout.conveyor_cells.empty() &&
+              target.factory_width == layout.bounding_width &&
+              target.factory_height == layout.bounding_height,
+          "Regional planning uses the final routed footprint");
     check_power_coverage(data, target, layout);
 }
 
@@ -424,12 +437,13 @@ void powered_blueprint(const Dataset &data)
 {
     BlueprintOptions options;
     options.automatic_recipes = true;
+    options.compact_seconds = 1e-9;
     BlueprintSolver solver(data.facilities, data.region.resources, data.areas, options);
     Product target;
     target.name = "ferrium_part";
     BlueprintLayout layout;
     check(solver.solve(target, layout) && layout.is_conveyor_feasible && layout.depot_length > 0,
-          "Ordinary Valley IV factories with depot unloaders must place and route");
+          "An expired compaction budget retains the initial routed factory");
     check_power_coverage(data, target, layout);
 
     auto facilities = data.facilities;

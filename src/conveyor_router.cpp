@@ -65,14 +65,21 @@ void normalize_port_order(const BlueprintLayout &layout, std::vector<StreamLink>
 } // namespace
 
 RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &streams, int grid_w,
-                              int grid_h)
+                              int grid_h, std::chrono::steady_clock::time_point deadline)
 {
     // -------------------------------------------------------------
     // PathFinder Negotiated Congestion Conveyor Router
     // -------------------------------------------------------------
     layout.conveyor_cells.clear();
     layout.conveyor_items.clear();
-    layout.is_conveyor_feasible = true;
+    layout.is_conveyor_feasible = false;
+    auto expired = [&]
+    {
+        using Clock = std::chrono::steady_clock;
+        return deadline != Clock::time_point::max() && Clock::now() >= deadline;
+    };
+    if (expired())
+        return {};
 
     std::set<std::pair<int, int>> facility_cells;
     for (const auto &pe : layout.entities)
@@ -268,10 +275,7 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
     for (size_t index = 0; index < streams.size(); ++index)
         for (const auto &cell : streams[index].fixed_path)
             if (!reserved_paths.emplace(cell, index).second)
-            {
-                layout.is_conveyor_feasible = false;
                 return {false, {static_cast<int>(index)}, {}};
-            }
     auto blocked = [&](int x, int y, int stream)
     {
         const auto found = reserved_paths.find({x, y});
@@ -356,6 +360,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
 
         while (!pq.empty())
         {
+            if (expired())
+                return false;
             auto [c, x, y, layer, dir] = pq.top();
             pq.pop();
 
@@ -573,6 +579,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
     bool all_initial_routed = true;
     for (size_t s_idx = 0; s_idx < streams.size(); ++s_idx)
     {
+        if (expired())
+            return {};
         if (!route_stream(static_cast<int>(s_idx), p_k))
         {
             all_initial_routed = false;
@@ -586,6 +594,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
     const int max_pf_iters = 12;
     for (int iter = 0; iter < max_pf_iters; ++iter)
     {
+        if (expired())
+            return {};
         std::set<std::pair<int, int>> conflicted_cells;
         std::vector<int> cur_conflicted_streams;
 
@@ -668,6 +678,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
         bool reroute_all = true;
         for (int s_idx : cur_conflicted_streams)
         {
+            if (expired())
+                return {};
             if (!route_stream(s_idx, p_k))
             {
                 reroute_all = false;
@@ -678,6 +690,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
                                        [](const auto &path) { return !path.empty(); });
     }
 
+    if (expired())
+        return {};
     if (pf_feasible)
     {
         // Assemble conveyor cells and items

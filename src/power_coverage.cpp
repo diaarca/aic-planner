@@ -7,7 +7,8 @@ namespace aic
 {
 bool place_electric_pylons(BlueprintLayout &layout, const FactoryNetwork &network,
                            const Facility &pylon, int grid_width, int grid_height,
-                           const std::vector<std::pair<int, int>> &reserved_cells)
+                           const std::vector<std::pair<int, int>> &reserved_cells,
+                           std::chrono::steady_clock::time_point deadline)
 {
     using namespace operations_research::sat;
     using Cell = std::pair<int, int>;
@@ -63,6 +64,8 @@ bool place_electric_pylons(BlueprintLayout &layout, const FactoryNetwork &networ
     std::vector<std::vector<BoolVar>> by_facility(uncovered.size());
     for (const auto &[x, y] : origins)
     {
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
         std::vector<Cell> footprint;
         for (int dy = 0; dy < pylon.height; ++dy)
             for (int dx = 0; dx < pylon.width; ++dx)
@@ -93,8 +96,12 @@ bool place_electric_pylons(BlueprintLayout &layout, const FactoryNetwork &networ
             model.AddAtMostOne(choices);
     model.Minimize(cost);
 
+    const auto remaining =
+        std::chrono::duration<double>(deadline - std::chrono::steady_clock::now()).count();
+    if (remaining <= 0)
+        return false;
     SatParameters parameters;
-    parameters.set_max_time_in_seconds(0.5);
+    parameters.set_max_time_in_seconds(std::min(0.5, remaining));
     parameters.set_num_search_workers(1);
     Model solver;
     solver.Add(NewSatParameters(parameters));

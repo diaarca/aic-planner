@@ -90,6 +90,12 @@ Run without `--no-layouts` to show the terminal factory maps. Diagnostics go to 
 
 `--validate` checks inputs and material balances without running placement. Invalid datasets and unsupported explicitly selected recipe chains fail validation. With automatic recipes, unsupported targets are reported and counted. Ordinary planning skips unsupported targets and fails if no blueprint can be generated or the regional solve fails. Use `--blueprints-only` to require successful placement and routing for every requested target.
 
+Use `--compact-seconds` to give each routed blueprint an optional wall-clock budget for reducing its footprint. The planner keeps the best layout whose conveyors and power coverage pass validation and uses its dimensions for regional placement. Omit the flag to use the first valid layout.
+
+```sh
+./build/bin/aic_planner --product buck_capsule_c --blueprints-only --compact-seconds 2 data/valley_iv
+```
+
 ## Update facilities and recipes
 
 The repository contains a generated [catalog](data/catalog.json) from [AKEData](https://github.com/NagiYume/AKEDatabase). Refresh it after a game update:

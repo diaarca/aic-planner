@@ -86,6 +86,7 @@ int main(int argc, char *argv[])
             facility_powers[facility.name] = facility.power;
         BlueprintOptions blueprint_options;
         blueprint_options.automatic_recipes = data.automatic_recipes;
+        blueprint_options.compact_seconds = options.compact_seconds;
         BlueprintSolver blueprint_solver(data.facilities, data.region.resources, data.areas,
                                          blueprint_options);
         std::vector<Product> producible_products;

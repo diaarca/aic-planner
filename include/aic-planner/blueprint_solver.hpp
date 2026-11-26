@@ -25,6 +25,7 @@ struct BlueprintOptions
     double placement_seconds = 2.0;
     int max_attempts = 50;
     bool automatic_recipes = false;
+    double compact_seconds = 0.0;
 };
 
 class BlueprintSolver
