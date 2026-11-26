@@ -123,9 +123,9 @@ The planner supports single-output solid-item recipes with multiple ingredients 
 
 Valley IV blueprints include Electric Pylons to cover facilities marked as requiring power. The planner models a facility as covered when at least one footprint tile lies inside a pylon's 12×12 supply area. Pylons auto-connect in the Core AIC Area. Connect them to the grid where manual power transmission is required.
 
-Valley IV plant production uses a fixed **15×9 module**: two planting units around one seed picker, with a protocol stash below and an electric pylon beside it. Insert one flower into the picker once. The left planter replenishes the picker; the right planter exports plants. With the recorded two-second recipes and one circulating flower, the conservative output is **15 plants/minute**, without recurring external seeds or depot frontage.
+Valley IV plant production uses a fixed **15×9 module** with two planting units, one seed picker, a protocol stash, and an electric pylon. The left planter replenishes the picker while the right planter exports **30 plants/minute** at steady state. The planner lists two starter flowers per picker at this rate to stock both recipe cycles. Belts can hold additional stock during warmup. The module runs without recurring external seeds or depot frontage.
 
-The same machine arrangement and short internal belts are preserved inside manufacturing blueprints; harvested plants feed downstream machines directly. Crop-dependent candidates are sized around one module per crop, and the regional solver can replicate the complete factory. A seed-only target retains the smaller picker/planter pair.
+The same machine arrangement and short internal belts are preserved inside manufacturing blueprints; harvested plants feed downstream machines directly. Crop-dependent candidates are sized around one module per crop, and the regional solver can replicate the complete factory. A seed-only target uses the smaller picker/planter pair and exports **30 seeds/minute** at steady state.
 
 ```sh
 ./build/bin/aic_planner --list-seed-loops data/valley_iv

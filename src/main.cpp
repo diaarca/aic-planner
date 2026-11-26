@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
         RecipeGraph graph(data.facilities, data.region.resources, data.automatic_recipes);
         if (options.command == Command::ListSeedLoops)
         {
-            std::cout << "Seed output | Initial flower in seed-picking unit (once)\n";
+            std::cout << "Seed output | Starter flower type\n";
             for (const auto &loop : graph.seed_loops())
                 std::cout << loop.seed << " | " << loop.flower << '\n';
             return 0;

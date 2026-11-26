@@ -315,10 +315,9 @@ void production_flows(const Dataset &data)
         }
         if (product.name == "buck_capsule_b")
         {
-            check(plan.startup_stock.at("buckflower") == 1 &&
+            check(plan.startup_stock.at("buckflower") == 2 &&
                       !plan.startup_stock.count("buckflower_seed"),
-                  "Initialize the closed seed module once with a flower, not externally supplied "
-                  "seeds");
+                  "The integrated loop needs startup flowers and no startup seeds");
         }
     }
     // Keep a high-throughput case independent of the crop candidate scale.
@@ -392,17 +391,20 @@ void standalone_seed_loop(const Dataset &data)
           "external supplies");
     check(plan.steps.size() == 2 && plan.steps[0].instances == 1 && plan.steps[1].instances == 1,
           "Standalone seed module uses exactly one picker and one planter");
-    check(std::abs(plan.target_rate - 0.25) < 1e-9,
-          "One spare seed per four-second closed circuit with one initial flower");
-    check(plan.startup_stock.at("sandleaf") == 1, "One initial Sandleaf flower starts the loop");
+    check(std::abs(plan.target_rate - 0.5) < 1e-9,
+          "The pipelined loop exports one spare seed every two seconds");
+    check(plan.startup_stock.at("sandleaf") == 2, "Startup stock covers both recipe cycles");
     const auto network = build_factory_network(
         plan, "sandleaf_seed", graph.facility("protocol_stash"), graph.facility("unloader"));
     check(network.total_unloaders == 0 && network.entities.size() == 3,
           "Seed export uses two production machines plus a stash, and no depot unloader");
     int export_belts = 0;
     for (const auto &stream : network.streams)
+    {
+        check(std::abs(stream.rate - 0.5) < 1e-9, "Each loop belt runs at 30 items/minute");
         if (stream.dst_entity == network.stash_entity_id)
             ++export_belts;
+    }
     check(export_belts == 1, "One spare-seed export connection");
     BlueprintOptions options;
     options.automatic_recipes = true;
@@ -411,6 +413,8 @@ void standalone_seed_loop(const Dataset &data)
     target.name = "sandleaf_seed";
     BlueprintLayout layout;
     check(solver.solve(target, layout), "Standalone seed loop must place and route");
+    check(std::abs(layout.output_per_minute - 30) < 1e-8,
+          "The standalone seed blueprint reports its 30 seeds/minute export rate");
     check(layout.depot_length == 0 && target.mineral_consumption.empty(),
           "No depot frontage or ongoing external material supply");
     check_power_coverage(data, target, layout);
@@ -456,8 +460,8 @@ void plant_templates(const Dataset &data)
     for (const auto &loop : loops)
     {
         const auto plan = graph.plan_target(loop.flower);
-        check(plan.external_rates.empty() && plan.startup_stock.at(loop.flower) == 1,
-              "Plant module needs one initial flower and no recurring external supply");
+        check(plan.external_rates.empty() && plan.startup_stock.at(loop.flower) == 2,
+              "Plant module needs startup flowers and no recurring external supply");
         Product target;
         target.name = loop.flower;
         BlueprintLayout layout;
@@ -470,10 +474,14 @@ void plant_templates(const Dataset &data)
                   target.factory_facilities.at("power_diffuser_1") == 1,
               "Two planters, one picker, one stash, and one electric pylon");
         check_power_coverage(data, target, layout);
-        check(std::abs(layout.output_per_minute - 15) < 1e-8,
-              "One-flower startup supports fifteen plants per minute");
+        check(std::abs(layout.output_per_minute - 30) < 1e-8 &&
+                  std::abs(target.production_time - 2) < 1e-8,
+              "The plant blueprint exports 30 plants/minute for reporting and regional planning");
         for (const auto &entity : layout.entities)
         {
+            if (!entity.recipe_name.empty())
+                check(std::abs(entity.utilization - 1) < 1e-8,
+                      "Each machine in the pipelined plant module runs at full utilization");
             if (entity.type == "planting_unit")
                 check((entity.x == 0 || entity.x == 10) && entity.y == 3 && entity.rotation == 180,
                       "Planters flank the picker");

@@ -19,7 +19,7 @@ GLOP minimizes occupied machine capacity with small power and external-input ter
 
 $$\min\sum_{rc\in RC}\tau_{rc}(w_{rc}h_{rc}+0.01P_{rc})x_{rc}+0.001\sum_i u_i$$
 
-Initial installed counts are $N_{rc}=\lceil\tau_{rc}x_{rc}\rceil$. The dedicated seed-module rules can increase these counts. This relaxation and rounding provide a candidate, not an optimum over all integer machine portfolios. The runtime checks numerical tolerances and limits manufacturing entity counts.
+Initial installed counts are $N_{rc}=\lceil\tau_{rc}x_{rc}\rceil$. The dedicated seed-module rules can increase these counts. When one recipe pool supplies all of an item's flow, it also needs enough output ports for the downstream machines' minimum belt count. This relaxation and rounding provide a candidate, not an optimum over all integer machine portfolios. The runtime checks numerical tolerances and limits manufacturing entity counts.
 
 For regional optimization, per-item cycle time is $1/\rho_p$, external consumption is $u_i/\rho_p$, and power is conservatively based on installed facility counts. Partial machine utilization is printed in the blueprint legend.
 
@@ -32,13 +32,13 @@ Recognize the recorded normal-mode recipe pair by facility role and quantities:
 
 Each feedback pair contains one dedicated picker and one dedicated recycling planter. A second, harvesting planter consumes the spare seed and exports plants. Its internal flows are fixed: the planter's flower goes only to its picker; one picker seed returns only to that planter; the spare seed feeds the harvesting planter (or the export stash for a seed-only target). Modules are not cross-connected for their return inputs.
 
-Initialize **one flower in each seed-picking unit, once**. With one flower circulating and spare seeds exported immediately, use the conservative serial cycle time:
+Once primed, the picker and recycling planter can run concurrently on separate items. The steady-state period $T_s$ is set by the slower recipe or the time needed to move an item onto a belt of capacity $C$:
 
-$$T_s=\tau_{pick}+\tau_{plant},\qquad \rho_s=1/T_s$$
+$$T_s=\max(\tau_{pick},\tau_{plant},1/C),\qquad \rho_s=1/T_s$$
 
-For the current two-second recipes, a pair exports one spare seed every four seconds. No additional circulating stock or startup priority controller is assumed. To support total picker operation rate $x_s$, create $\lceil x_sT_s\rceil$ modules. Each harvesting planter is kept with its dedicated feedback pair. Crop-dependent candidates are scaled down uniformly when necessary so the largest crop demand fits one module; all material rates and target throughput scale together. The regional optimizer can replicate complete factories. Initial-stock instructions count flowers, not recurring seed imports.
+For the current two-second recipes, a pair exports one spare seed every two seconds. For total picker operation rate $x_s$, use $n=\lceil x_sT_s\rceil$ modules and list $\lceil(x_s/n)(\tau_{pick}+\tau_{plant})\rceil$ starter flowers per picker. This stocks both recipe cycles at full speed and excludes any extra buffer carried on belts during warmup. Each harvesting planter stays with its dedicated feedback pair. Crop-dependent candidates are scaled down uniformly when necessary so the largest crop demand fits one module. The regional optimizer can replicate complete factories.
 
-A standalone seed target uses this net rate and the same two machines plus a protocol stash for export. It has no external material supply, unloaders, or depot frontage. The standalone plant target instead uses the fixed 15×9 planter/picker/planter layout, with stash and electric pylon below. Its conservative net output is 15 plants/minute for the recorded recipes. In integrated blueprints, plants from the harvesting planter connect directly to other machines. Both cases still require normal electrical power.
+A standalone seed target uses this net rate and the same two machines plus a protocol stash for export. It has no external material supply, unloaders, or depot frontage. The standalone plant target uses the fixed 15×9 planter/picker/planter layout with a stash and an Electric Pylon below. Its steady-state output is 30 plants/minute for the recorded recipes. In integrated blueprints, plants from the harvesting planter connect directly to other machines. Both cases still require normal electrical power.
 
 ## 3. Per-machine conveyor allocation
 
@@ -83,8 +83,8 @@ Regression coverage checks:
 - Conservation for all 14 imported Valley IV sale products, including multi-input intermediates and productive crop cycles.
 - Rejection of unproductive cycles and undeclared supplies.
 - Belt capacities, unique ports, parallel belts, and exact input/output fulfillment.
-- Dedicated seed-module feedback, equal return/spare seed quantities, and one startup flower per pair.
-- A standalone Sandleaf seed blueprint with zero depot frontage.
+- Dedicated seed-module feedback, equal return/spare seed flows, and startup stock for concurrent recipe cycles.
+- A standalone Sandleaf seed blueprint with zero depot frontage and 30 seeds/minute.
 - All four Valley IV plants use the exact 15×9 template, pylon, and eight belt cells.
 - Pylon coverage, clearance, and regional facility counts for Valley IV factory and seed-loop blueprints.
 - Physical generation/routing of every Valley IV blueprint, without fixing a particular arrangement.

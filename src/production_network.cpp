@@ -102,7 +102,8 @@ FactoryNetwork build_factory_network(const ProductionPlan &plan, const std::stri
         {
             if (!plan.external_rates.count(item))
                 continue;
-            const int number = static_cast<int>(std::ceil(rate / 0.5 - 1e-8));
+            const int number =
+                static_cast<int>(std::ceil(rate * solid_belt_seconds_per_item - 1e-8));
             for (int index = 0; index < number; ++index)
             {
                 FactoryEntity source;
@@ -133,7 +134,7 @@ FactoryNetwork build_factory_network(const ProductionPlan &plan, const std::stri
         }
     }
     // Recover the small rational rates from the LP so flow equalities are exact in CP-SAT.
-    int64_t scale = 2;
+    int64_t scale = solid_belt_seconds_per_item;
     for (const auto &entity : entities)
         for (const auto *rates : {&entity.input_rates, &entity.output_rates})
             for (const auto &[item, rate] : *rates)
@@ -156,6 +157,7 @@ FactoryNetwork build_factory_network(const ProductionPlan &plan, const std::stri
     std::vector<std::vector<BoolVar>> inputs(entities.size()), outputs(entities.size());
     std::map<std::pair<int, std::string>, std::vector<IntVar>> incoming, outgoing;
     LinearExpr objective;
+    const int64_t belt_capacity = scale / solid_belt_seconds_per_item;
     for (const auto &source : entities)
         for (const auto &[item, rate] : source.output_rates)
             for (const auto &destination : entities)
@@ -177,13 +179,14 @@ FactoryNetwork build_factory_network(const ProductionPlan &plan, const std::stri
                 if (source.loop_role == SeedLoopRole::Picker && source.loop_harvest >= 0 &&
                     destination.id != source.loop_partner && destination.id != source.loop_harvest)
                     continue;
-                const int parallel = static_cast<int>(
-                    std::ceil(std::min(rate, destination.input_rates.at(item)) / 0.5 - 1e-8));
+                const int parallel = static_cast<int>(std::ceil(
+                    std::min(rate, destination.input_rates.at(item)) * solid_belt_seconds_per_item -
+                    1e-8));
                 for (int lane = 0; lane < parallel; ++lane)
                 {
-                    auto amount = model.NewIntVar(Domain(0, scale / 2));
+                    auto amount = model.NewIntVar(Domain(0, belt_capacity));
                     auto active = model.NewBoolVar();
-                    model.AddLessOrEqual(amount, LinearExpr::Term(active, scale / 2));
+                    model.AddLessOrEqual(amount, LinearExpr::Term(active, belt_capacity));
                     model.AddGreaterOrEqual(amount, active);
                     edges.push_back({source.id, destination.id, item, amount, active});
                     incoming[{destination.id, item}].push_back(amount);

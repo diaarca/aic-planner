@@ -16,16 +16,16 @@ A planting recipe consumes a seed and produces a flower. Seed picking consumes a
 
 ```mermaid
 flowchart LR
-    Initial[One flower, once] -.-> Picking[Seed picking]
+    Initial[Starter flowers] -.-> Picking[Seed picking]
     Picking -->|one returned seed| Planting
     Planting -->|flower returned| Picking
     Picking -->|spare seed| Harvest[Harvesting planter]
     Harvest -->|plants| Output[Storage or another machine]
 ```
 
-Initialize one flower directly in each seed-picking unit, once. Its paired planter receives only its returned seed, and sends its flower only back to that picker. No recurring flower/seed imports or depot frontage are needed. A second planter converts the spare seeds to plants for downstream machines or a protocol stash. Electrical power is still required.
+Load the reported starter flowers directly into each seed-picking unit. Its paired planter receives only its returned seeds and sends flowers back to that picker. No recurring flower or seed imports or depot frontage are needed. A second planter converts the spare seeds to plants for downstream machines or a protocol stash. Electrical power is still required.
 
-With one flower circulating and spare seeds exported immediately, the conservative cycle is picking time plus planting time: two seconds plus two seconds gives one spare seed every four seconds. Higher utilization would require extra circulating stock or a startup-priority mechanism, neither of which is assumed here. The plant module therefore exports 15 plants/minute with the recorded two-second recipes. Crop-dependent factory candidates are scaled to one module per crop; the regional optimizer can replicate factories to meet higher demand.
+After warmup, picking and planting overlap. With the recorded two-second recipes, the loop exports one spare seed every two seconds, or **30 plants/minute** through the harvesting planter. The startup report includes two flowers per full-speed picker for the concurrent recipe cycles. Belt travel can require more circulating stock during warmup. Crop-dependent factory candidates are scaled to one module per crop. The regional optimizer can replicate factories to meet higher demand.
 
 Generate the small depot-free module with:
 

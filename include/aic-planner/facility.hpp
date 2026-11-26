@@ -17,6 +17,8 @@ enum class TransportMedium
     Pipe
 };
 
+inline constexpr int solid_belt_seconds_per_item = 2;
+
 struct Port
 {
     int x = 0;
