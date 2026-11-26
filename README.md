@@ -90,10 +90,13 @@ Run without `--no-layouts` to show the terminal factory maps. Diagnostics go to 
 
 `--validate` checks inputs and material balances without running placement. Invalid datasets and unsupported explicitly selected recipe chains fail validation. With automatic recipes, unsupported targets are reported and counted. Ordinary planning skips unsupported targets and fails if no blueprint can be generated or the regional solve fails. Use `--blueprints-only` to require successful placement and routing for every requested target.
 
-Use `--compact-seconds` to give each routed blueprint an optional wall-clock budget for reducing its footprint. The planner keeps the best layout whose conveyors and power coverage pass validation and uses its dimensions for regional placement. Omit the flag to use the first valid layout.
+After routing, the planner closes gaps by removing rows or columns that only carry straight belt crossings. Use `--compact-seconds` to give each routed blueprint extra time for local rerouting and alternative placements. The planner ranks valid layouts by footprint area, then by belt length, and uses the selected dimensions for regional placement.
+
+Use `--blueprint-size WIDTHxHEIGHT` to set a maximum search box from the start of placement. Conveyors and pylons must also fit inside it. The limit applies to every requested blueprint, and a smaller box can make routing harder.
 
 ```sh
-./build/bin/aic_planner --product buck_capsule_c --blueprints-only --compact-seconds 2 data/valley_iv
+./build/bin/aic_planner --product hc_valley_battery --blueprints-only \
+  --blueprint-size 62x50 --compact-seconds 1 data/valley_iv
 ```
 
 ### View a blueprint in EnKAD
@@ -141,12 +144,15 @@ Valley IV blueprints include Electric Pylons to cover facilities marked as requi
 
 Valley IV plant production uses a fixed **15×9 module** with two planting units, one seed picker, a protocol stash, and an electric pylon. The left planter replenishes the picker while the right planter exports **30 plants/minute** at steady state. The planner lists two starter flowers per picker at this rate to stock both recipe cycles. Belts can hold additional stock during warmup. The module runs without recurring external seeds or depot frontage.
 
-The same machine arrangement and short internal belts are preserved inside manufacturing blueprints; harvested plants feed downstream machines directly. Crop-dependent candidates are sized around one module per crop, and the regional solver can replicate the complete factory. A seed-only target uses the smaller picker/planter pair and exports **30 seeds/minute** at steady state.
+The same machine arrangement and short internal belts are preserved inside manufacturing blueprints; harvested plants feed downstream machines directly. Crop-dependent factories add as many modules as needed to feed the final facility. A seed-only target uses the smaller picker/planter pair and exports **30 seeds/minute** at steady state.
+
+Each generated blueprint runs its final production facility at **100% utilization**. Upstream machines can run below capacity when they already supply enough material. HC Valley Battery uses two Sandleaf modules to feed a full-speed Packaging Unit producing **6 batteries/minute**. The blueprint legend shows each machine’s planned utilization at the stated output.
 
 ```sh
 ./build/bin/aic_planner --list-seed-loops data/valley_iv
 ./build/bin/aic_planner --plant-loop sandleaf data/valley_iv
 ./build/bin/aic_planner --seed-loop sandleaf_seed data/valley_iv
+./build/bin/aic_planner --product hc_valley_battery --blueprints-only data/valley_iv
 ./build/bin/aic_planner --blueprints-only --no-layouts data/valley_iv
 ```
 

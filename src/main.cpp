@@ -89,6 +89,7 @@ int main(int argc, char *argv[])
         blueprint_options.automatic_recipes = data.automatic_recipes;
         blueprint_options.compact_seconds = options.compact_seconds;
         blueprint_options.allow_overpasses = options.enkad_directory.empty();
+        blueprint_options.blueprint_size = options.blueprint_size;
         BlueprintSolver blueprint_solver(data.facilities, data.region.resources, data.areas,
                                          blueprint_options);
         if (!options.enkad_directory.empty())
@@ -98,6 +99,9 @@ int main(int argc, char *argv[])
         std::map<std::string, BlueprintLayout> layouts;
         log(LogLevel::Info, "Generating factory blueprints for ", data.products.size(),
             " product candidates");
+        if (options.blueprint_size)
+            log(LogLevel::Info, "Blueprint placement limit: ", options.blueprint_size->first, " x ",
+                options.blueprint_size->second);
         for (auto product : data.products)
         {
             BlueprintLayout layout;
@@ -126,20 +130,22 @@ int main(int argc, char *argv[])
                 {
                     log(LogLevel::Error, "Could not export ", product.name, ": ", error.what());
                 }
-            layouts[product.name] = std::move(layout);
-            producible_products.push_back(product);
+            layouts.emplace(product.name, std::move(layout));
+            producible_products.push_back(std::move(product));
         }
+
         log(LogLevel::Info, "Blueprints generated: ", producible_products.size(), "/",
             data.products.size());
         if (producible_products.empty())
             throw std::runtime_error("No supported, successfully routed target blueprints");
+        const bool blueprints_complete = producible_products.size() == data.products.size();
         const bool exports_complete =
             options.enkad_directory.empty() || exported == data.products.size();
         if (!options.enkad_directory.empty())
             log(exports_complete ? LogLevel::Info : LogLevel::Warning,
                 "EnKAD blueprints exported: ", exported, "/", data.products.size());
         if (options.blueprints_only)
-            return producible_products.size() == data.products.size() && exports_complete ? 0 : 1;
+            return blueprints_complete && exports_complete ? 0 : 1;
         log(LogLevel::Info, "Optimizing regional production");
         Solver solver(producible_products, data.region.resources, data.areas, data.fuels,
                       facility_powers, data.region);

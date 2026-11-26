@@ -1,7 +1,9 @@
 #pragma once
 
 #include "logging.hpp"
+#include <optional>
 #include <string>
+#include <utility>
 
 namespace aic
 {
@@ -30,6 +32,7 @@ struct CliOptions
     bool blueprints_only = false;
     double solve_seconds = 30.0;
     double compact_seconds = 0.0;
+    std::optional<std::pair<int, int>> blueprint_size;
     LogLevel verbosity = LogLevel::Info;
 };
 CliOptions parse_cli(int argc, const char *const argv[]);

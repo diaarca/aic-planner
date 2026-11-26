@@ -149,23 +149,25 @@ ProductionPlan RecipeGraph::plan_target(const std::string &target) const
         }
     };
     collect(target);
-    double target_rate = 0;
-    for (const auto &[machine, recipe] : choices)
-        if (recipe->products.front().item == target)
-            target_rate = std::max(target_rate, recipe->products.front().amount / recipe->time);
-    if (standalone)
-        target_rate = 1.0 / seed_loop_period(*standalone);
-    if (target_rate == 0)
+    std::vector<size_t> final_recipes;
+    for (size_t index = 0; index < choices.size(); ++index)
+        if (choices[index].second->products.front().item == target)
+            final_recipes.push_back(index);
+    if (final_recipes.empty())
         throw std::invalid_argument(first_problem.empty() ? "No recipe for '" + target + "'"
                                                           : first_problem);
+    const auto nominal_output = [&](size_t index)
+    {
+        const auto &recipe = *choices[index].second;
+        return recipe.products.front().amount / recipe.time;
+    };
+    std::stable_sort(final_recipes.begin(), final_recipes.end(),
+                     [&](size_t a, size_t b) { return nominal_output(a) > nominal_output(b); });
 
     MPSolver solver("production_balance", MPSolver::GLOP_LINEAR_PROGRAMMING);
     std::map<std::string, MPConstraint *> balances;
     for (const auto &item : items)
-    {
-        const double required = item == target ? target_rate : 0;
-        balances[item] = solver.MakeRowConstraint(required, required, item);
-    }
+        balances[item] = solver.MakeRowConstraint(0, 0, item);
     std::vector<MPVariable *> rates;
     for (const auto &[machine, recipe] : choices)
     {
@@ -192,7 +194,34 @@ ProductionPlan RecipeGraph::plan_target(const std::string &target) const
             solver.MutableObjective()->SetCoefficient(supply, 0.001);
         }
     solver.MutableObjective()->SetMinimization();
-    if (solver.Solve() != MPSolver::OPTIMAL)
+    double target_rate = 0;
+    if (standalone)
+    {
+        const double rate = 1.0 / seed_loop_period(*standalone);
+        balances.at(target)->SetBounds(rate, rate);
+        if (solver.Solve() == MPSolver::OPTIMAL)
+            target_rate = rate;
+    }
+    else
+    {
+        // Select one final recipe at full speed, trying the highest output first.
+        for (const auto index : final_recipes)
+            rates[index]->SetBounds(0, 0);
+        for (const auto index : final_recipes)
+        {
+            const double cycles = 1.0 / choices[index].second->time;
+            const double output = nominal_output(index);
+            rates[index]->SetBounds(cycles, cycles);
+            balances.at(target)->SetBounds(output, output);
+            if (solver.Solve() == MPSolver::OPTIMAL)
+            {
+                target_rate = output;
+                break;
+            }
+            rates[index]->SetBounds(0, 0);
+        }
+    }
+    if (target_rate == 0)
         throw std::invalid_argument("Infeasible production balance for '" + target + "'" +
                                     (first_problem.empty()
                                          ? ": recipe cycle cannot provide net output"
@@ -215,28 +244,6 @@ ProductionPlan RecipeGraph::plan_target(const std::string &target) const
     for (const auto &[item, supply] : supplies)
         if (supply->solution_value() > 1e-9)
             plan.external_rates[item] = supply->solution_value();
-
-    // Size a crop-dependent candidate around one plant module per crop. The
-    // regional optimizer can replicate the complete factory for more throughput.
-    // This keeps the fixed modules from dominating a single routing problem.
-    double module_scale = 1;
-    for (const auto &loop : loops)
-        for (const auto &step : plan.steps)
-            if (step.recipe == loop.picker)
-                module_scale =
-                    std::max(module_scale, step.cycles_per_second * seed_loop_period(loop));
-    if (module_scale > 1 + 1e-8)
-    {
-        plan.target_rate /= module_scale;
-        for (auto &[item, rate] : plan.external_rates)
-            rate /= module_scale;
-        for (auto &step : plan.steps)
-        {
-            step.cycles_per_second /= module_scale;
-            step.instances =
-                static_cast<int>(std::ceil(step.cycles_per_second * step.recipe->time - 1e-8));
-        }
-    }
 
     // Turn recognized seed feedback into independent picker/planter modules.
     // A dedicated planter returns one flower; the picker reserves one seed for it
@@ -313,6 +320,13 @@ ProductionPlan RecipeGraph::plan_target(const std::string &target) const
         if (ports > 0)
             step.instances = std::max(step.instances, (incoming_belts[item] + ports - 1) / ports);
     }
+
+    for (const auto &step : plan.steps)
+        if (step.recipe->products.front().item == target &&
+            step.loop_role != SeedLoopRole::Planter &&
+            std::abs(step.cycles_per_second * step.recipe->time - step.instances) > 1e-8)
+            throw std::invalid_argument("Final facility for '" + target +
+                                        "' cannot run at full utilization");
 
     // Productive cycles need initial stock even though their steady-state net input is zero.
     std::map<std::string, std::vector<std::string>> dependencies;

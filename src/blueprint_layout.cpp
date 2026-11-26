@@ -83,10 +83,18 @@ int rotate_conveyor_mask(int mask, int rotation)
     return result;
 }
 
-void BlueprintLayout::normalize()
+size_t BlueprintLayout::belt_tiles() const
+{
+    size_t length = 0;
+    for (const auto &path : conveyor_paths)
+        length += path.size() - 2;
+    return length;
+}
+
+std::pair<int, int> BlueprintLayout::normalize()
 {
     if (entities.empty() && conveyor_cells.empty())
-        return;
+        return {0, 0};
     int min_x = std::numeric_limits<int>::max(), min_y = min_x;
     int max_x = std::numeric_limits<int>::min(), max_y = max_x;
     auto include = [&](int x, int y)
@@ -127,7 +135,13 @@ void BlueprintLayout::normalize()
             x -= min_x;
             y -= min_y;
         }
+    for (auto &[x, y] : conveyor_overpasses)
+    {
+        x -= min_x;
+        y -= min_y;
+    }
     bounding_width = max_x - min_x + 1;
     bounding_height = max_y - min_y + 1;
+    return {min_x, min_y};
 }
 } // namespace aic
