@@ -3,6 +3,7 @@
 #include "logging.hpp"
 #include "ortools/sat/cp_model.h"
 #include "plant_module.hpp"
+#include "power_coverage.hpp"
 #include "production_network.hpp"
 #include <algorithm>
 #include <cmath>
@@ -27,6 +28,14 @@ BlueprintSolver::BlueprintSolver(const std::vector<Facility> &facilities,
     if (!std::isfinite(options.placement_seconds) || options.placement_seconds < 0 ||
         options.max_attempts < 1)
         throw std::invalid_argument("Invalid blueprint search options");
+    const auto pylon = std::find_if(facilities.begin(), facilities.end(),
+                                    [](const Facility &facility)
+                                    {
+                                        return facility.name == "power_diffuser_1" &&
+                                               facility.power_range_extension.has_value();
+                                    });
+    if (pylon != facilities.end())
+        electric_pylon_ = &*pylon;
 }
 
 bool BlueprintSolver::is_mineral(const std::string &item) const
@@ -340,6 +349,7 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         IntVar ay;
     };
     std::vector<PortAccessVar> port_accesses;
+    std::vector<std::pair<IntVar, IntVar>> reserved_approaches;
 
     for (int i = 0; i < N; ++i)
     {
@@ -409,6 +419,7 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
                     IntVar ay2 = model.NewIntVar(Domain(0, grid_h - 1));
                     model.AddEquality(ax2, posX[i] + px + 2 * fx);
                     model.AddEquality(ay2, posY[i] + py + 2 * fy);
+                    reserved_approaches.emplace_back(ax2, ay2);
 
                     for (int j = 0; j < N; ++j)
                     {
@@ -655,6 +666,7 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
     params.set_random_seed(42);
 
     const int max_conveyor_attempts = options_.max_attempts;
+    bool power_coverage_failed = false;
 
     for (int attempt = 1; attempt <= max_conveyor_attempts; ++attempt)
     {
@@ -734,7 +746,17 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         fix_plant_paths(network, layout, standalone_plant);
         const auto routing = route_conveyors(layout, streams, grid_w, grid_h);
         const auto &conflicted_stream_indices = routing.conflicted_stream_indices;
-        if (routing.feasible)
+        bool complete = routing.feasible;
+        if (complete && electric_pylon_)
+        {
+            std::vector<std::pair<int, int>> reserved_cells;
+            for (const auto &[x, y] : reserved_approaches)
+                reserved_cells.emplace_back(SolutionIntegerValue(response, x),
+                                            SolutionIntegerValue(response, y));
+            complete = place_electric_pylons(layout, network, *electric_pylon_, grid_w, grid_h,
+                                             reserved_cells);
+        }
+        if (complete)
         {
             if (attempt > 1)
             {
@@ -754,14 +776,24 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
             layout.normalize();
             product.factory_width = layout.bounding_width;
             product.factory_height = layout.bounding_height;
+            if (electric_pylon_ && layout.entities.size() > entities.size())
+                product.factory_facilities[electric_pylon_->name] +=
+                    layout.entities.size() - entities.size();
 
             status_ = BlueprintStatus::Success;
             return true;
         }
 
-        // Conveyor routing infeasible: Add no-good cuts to CP-SAT
-        log(LogLevel::Debug, "Routing conflict for ", product.name, " on attempt ", attempt, ": ",
-            conflicted_stream_indices.size(), " conflicted streams; adding placement cuts");
+        if (routing.feasible)
+        {
+            power_coverage_failed = true;
+            log(LogLevel::Debug, product.name,
+                ": could not place pylons for routed layout on attempt ", attempt);
+        }
+        else
+            log(LogLevel::Debug, "Routing conflict for ", product.name, " on attempt ", attempt,
+                ": ", conflicted_stream_indices.size(),
+                " conflicted streams; adding placement cuts");
 
         std::vector<BoolVar> entity_matches(N);
         std::vector<BoolVar> not_matches;
@@ -866,8 +898,10 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
     }
 
     status_ = BlueprintStatus::RoutingExhausted;
-    log(LogLevel::Warning, product.name, ": routing search exhausted after ", max_conveyor_attempts,
-        " placements");
+    log(LogLevel::Warning, product.name,
+        power_coverage_failed ? ": routing and power coverage search exhausted after "
+                              : ": routing search exhausted after ",
+        max_conveyor_attempts, " placements");
     return false;
 }
 

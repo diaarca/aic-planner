@@ -44,6 +44,7 @@ class BlueprintSolver
     BlueprintOptions options_;
     BlueprintStatus status_ = BlueprintStatus::Infeasible;
     const std::vector<Area> &areas_;
+    const Facility *electric_pylon_ = nullptr;
 
     bool is_mineral(const std::string &item) const;
 };

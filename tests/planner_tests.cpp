@@ -342,6 +342,43 @@ void production_flows(const Dataset &data)
           "Parallel belts must use distinct ports and respect capacity");
 }
 
+void check_power_coverage(const Dataset &data, const Product &product,
+                          const BlueprintLayout &layout)
+{
+    std::vector<const PlacedBlueprintEntity *> pylons;
+    std::set<std::pair<int, int>> occupied;
+    for (const auto &entity : layout.entities)
+    {
+        if (entity.type == "power_diffuser_1")
+            pylons.push_back(&entity);
+        for (int y = entity.y; y < entity.y + entity.height; ++y)
+            for (int x = entity.x; x < entity.x + entity.width; ++x)
+                check(occupied.emplace(x, y).second && !layout.conveyor_cells.count({x, y}) &&
+                          x >= 0 && x < layout.bounding_width && y >= 0 &&
+                          y < layout.bounding_height,
+                      "Blueprint facilities must fit and clear facilities and conveyors");
+    }
+    check(!pylons.empty() && product.factory_facilities.at("power_diffuser_1") == pylons.size(),
+          "Regional factory counts include the placed pylons");
+    for (const auto &entity : layout.entities)
+    {
+        const auto facility =
+            std::find_if(data.facilities.begin(), data.facilities.end(),
+                         [&](const Facility &f) { return f.name == entity.type; });
+        check(facility != data.facilities.end(), "Known blueprint facility type");
+        if (facility->needs_power && entity.type != "power_diffuser_1")
+            check(std::any_of(pylons.begin(), pylons.end(),
+                              [&](const PlacedBlueprintEntity *pylon)
+                              {
+                                  return entity.x + entity.width > pylon->x - 5 &&
+                                         entity.x < pylon->x + 7 &&
+                                         entity.y + entity.height > pylon->y - 5 &&
+                                         entity.y < pylon->y + 7;
+                              }),
+                  entity.type + " must intersect an Electric Pylon's 12x12 coverage");
+    }
+}
+
 void standalone_seed_loop(const Dataset &data)
 {
     RecipeGraph graph(data.facilities, data.region.resources, true);
@@ -376,6 +413,33 @@ void standalone_seed_loop(const Dataset &data)
     check(solver.solve(target, layout), "Standalone seed loop must place and route");
     check(layout.depot_length == 0 && target.mineral_consumption.empty(),
           "No depot frontage or ongoing external material supply");
+    check_power_coverage(data, target, layout);
+}
+
+void powered_blueprint(const Dataset &data)
+{
+    BlueprintOptions options;
+    options.automatic_recipes = true;
+    BlueprintSolver solver(data.facilities, data.region.resources, data.areas, options);
+    Product target;
+    target.name = "ferrium_part";
+    BlueprintLayout layout;
+    check(solver.solve(target, layout) && layout.is_conveyor_feasible && layout.depot_length > 0,
+          "Ordinary Valley IV factories with depot unloaders must place and route");
+    check_power_coverage(data, target, layout);
+
+    auto facilities = data.facilities;
+    const auto pylon =
+        std::find_if(facilities.begin(), facilities.end(),
+                     [](const Facility &facility) { return facility.name == "power_diffuser_1"; });
+    check(pylon != facilities.end() && pylon->power_range_extension == std::make_pair(5, 5),
+          "Electric Pylon extends its footprint by five tiles in both horizontal axes");
+    pylon->power_range_extension = {0, 0};
+    options.max_attempts = 1;
+    BlueprintSolver no_coverage(facilities, data.region.resources, data.areas, options);
+    target.name = "sandleaf";
+    check(!no_coverage.solve(target, layout) && layout.is_conveyor_feasible,
+          "A routed blueprint cannot succeed when required power coverage is impossible");
 }
 
 void plant_templates(const Dataset &data)
@@ -405,9 +469,9 @@ void plant_templates(const Dataset &data)
                   target.factory_facilities.at("seed_picking_unit") == 1 &&
                   target.factory_facilities.at("power_diffuser_1") == 1,
               "Two planters, one picker, one stash, and one electric pylon");
+        check_power_coverage(data, target, layout);
         check(std::abs(layout.output_per_minute - 15) < 1e-8,
               "One-flower startup supports fifteen plants per minute");
-        std::set<std::pair<int, int>> occupied;
         for (const auto &entity : layout.entities)
         {
             if (entity.type == "planting_unit")
@@ -420,9 +484,6 @@ void plant_templates(const Dataset &data)
                       "Stash below picker");
             if (entity.type == "power_diffuser_1")
                 check(entity.x == 9 && entity.y == 0, "Pylon beside stash");
-            for (int x = entity.x; x < entity.x + entity.width; ++x)
-                for (int y = entity.y; y < entity.y + entity.height; ++y)
-                    check(occupied.insert({x, y}).second, "Template buildings must not overlap");
         }
         const std::map<std::pair<int, int>, std::string> expected{
             {{4, 8}, loop.seed},   {{5, 8}, loop.seed},   {{9, 8}, loop.seed},
@@ -430,8 +491,6 @@ void plant_templates(const Dataset &data)
             {{9, 2}, loop.flower}, {{10, 2}, loop.flower}};
         check(layout.is_conveyor_feasible && layout.conveyor_items == expected,
               "Exact short internal loops and plant export belt");
-        for (const auto &[cell, item] : layout.conveyor_items)
-            check(!occupied.count(cell), "Belts must stay clear of the pylon and other buildings");
     }
 }
 
@@ -581,6 +640,7 @@ int main(int argc, char **argv)
         production_flows(imported);
         standalone_seed_loop(imported);
         plant_templates(imported);
+        powered_blueprint(imported);
         regional_model();
         blueprint(fixture);
         std::cout << "Planner regression checks passed\n";

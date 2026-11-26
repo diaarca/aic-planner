@@ -121,7 +121,9 @@ Inspect every imported regional sale price without running placement:
 
 The planner supports single-output solid-item recipes with multiple ingredients and productive recycling loops. The checked-in Valley IV dataset generates blueprints for all 14 sale products. Per-machine flow allocation checks belt capacities and distinct ports, including parallel belts. Pipe, environmental, and multiple-output mechanics remain unsupported.
 
-Valley IV plant production uses a fixed **15×9 module**: two planting units around one seed picker, with a protocol stash below and an electric pylon beside it. Insert one flower into the picker once. The left planter replenishes the picker; the right planter exports plants. With the recorded two-second recipes and one circulating flower, the conservative output is **15 plants/minute**, without recurring external seeds or depot frontage. Connect the pylon to your power network.
+Valley IV blueprints include Electric Pylons to cover facilities marked as requiring power. The planner models a facility as covered when at least one footprint tile lies inside a pylon's 12×12 supply area. Pylons auto-connect in the Core AIC Area. Connect them to the grid where manual power transmission is required.
+
+Valley IV plant production uses a fixed **15×9 module**: two planting units around one seed picker, with a protocol stash below and an electric pylon beside it. Insert one flower into the picker once. The left planter replenishes the picker; the right planter exports plants. With the recorded two-second recipes and one circulating flower, the conservative output is **15 plants/minute**, without recurring external seeds or depot frontage.
 
 The same machine arrangement and short internal belts are preserved inside manufacturing blueprints; harvested plants feed downstream machines directly. Crop-dependent candidates are sized around one module per crop, and the regional solver can replicate the complete factory. A seed-only target retains the smaller picker/planter pair.
 

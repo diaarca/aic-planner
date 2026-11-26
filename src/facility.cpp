@@ -66,6 +66,22 @@ std::vector<Facility> Facility::from_json(const nlohmann::json &j)
         f.power = item.value("power", 0.0);
         f.width = tile(item, "width");
         f.height = tile(item, "height");
+        f.needs_power = item.contains("properties")
+                            ? item.at("properties").value("needPower", f.power > 0)
+                            : f.power > 0;
+        if (item.contains("specializations") &&
+            item.at("specializations").contains("FactoryPowerPoleTable"))
+        {
+            const auto &pole = item.at("specializations").at("FactoryPowerPoleTable");
+            if (pole.contains("rangeExtend"))
+            {
+                const auto &range = pole.at("rangeExtend");
+                const int x = tile(range, "x"), y = tile(range, "z");
+                if (x < 0 || y < 0)
+                    throw std::invalid_argument("Power range extension must be nonnegative");
+                f.power_range_extension = {x, y};
+            }
+        }
 
         auto read_ports = [&](const char *side)
         {

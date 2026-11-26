@@ -14,6 +14,7 @@ set(PLANNER_LIB_SOURCES
     recipe_graph.cpp
     production_network.cpp
     plant_module.cpp
+    power_coverage.cpp
     solver.cpp
 )
 
