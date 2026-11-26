@@ -47,6 +47,7 @@ FactoryNetwork build_factory_network(const ProductionPlan &plan, const std::stri
             entity.name = entity.type + "_" + std::to_string(++counts[entity.type]);
             entity.base_w = step.facility->width;
             entity.base_h = step.facility->height;
+            entity.needs_power = step.facility->needs_power;
             entity.inputs = solid_ports(step.facility->inputs);
             entity.outputs = solid_ports(step.facility->outputs);
             entity.recipe = step.recipe;
@@ -88,6 +89,7 @@ FactoryNetwork build_factory_network(const ProductionPlan &plan, const std::stri
     sink.name = sink.type = "protocol_stash";
     sink.base_w = stash.width;
     sink.base_h = stash.height;
+    sink.needs_power = stash.needs_power;
     sink.inputs = solid_ports(stash.inputs);
     sink.input_rates[target] = plan.target_rate;
     network.stash_entity_id = sink.id;
@@ -110,6 +112,7 @@ FactoryNetwork build_factory_network(const ProductionPlan &plan, const std::stri
                 source.base_w = unloader.width;
                 source.base_h = unloader.height;
                 source.is_unloader = true;
+                source.needs_power = unloader.needs_power;
                 source.item_produced = item;
                 source.output_rates[item] = rate / number;
                 source.dedicated_destination = destination;

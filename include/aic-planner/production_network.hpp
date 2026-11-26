@@ -11,6 +11,7 @@ struct FactoryEntity
     int base_w = 0, base_h = 0, base_rotation = 0;
     std::vector<Port> inputs, outputs;
     bool is_unloader = false;
+    bool needs_power = false;
     std::string item_produced, item_consumed;
     const Recipe *recipe = nullptr;
     std::map<std::string, double> input_rates, output_rates;

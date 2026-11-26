@@ -3,7 +3,9 @@
 #include <iostream>
 #include <map>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace aic
@@ -57,6 +59,8 @@ struct Facility
     std::vector<Port> inputs;
     std::vector<Port> outputs;
     std::vector<Recipe> recipes;
+    bool needs_power = false;
+    std::optional<std::pair<int, int>> power_range_extension;
 
     static std::vector<Facility> read_json(const std::string &filename);
     static std::vector<Facility> from_json(const nlohmann::json &data);

@@ -1,6 +1,6 @@
 # Mathematical Model: Blueprint Generation
 
-Blueprint generation has three stages: steady-state material balance, per-machine conveyor allocation, and physical placement/routing. It produces candidates for the regional master; it does not prove globally optimal factory designs.
+Blueprint generation balances steady-state materials, allocates per-machine conveyors, and searches for a placement with feasible routing and power coverage. It produces candidates for the regional master; it does not prove globally optimal factory designs.
 
 ## 1. Material balance, including productive loops
 
@@ -70,7 +70,13 @@ The negotiated-congestion router searches a 2.5D grid: normal ground belts and s
 
 Successful routing records conveyor cells and normalized entity/port coordinates. Failed routing adds exact-placement and heuristic relative/pairwise conflict cuts before another placement attempt. Those heuristic cuts may exclude more than the exact rejected arrangement. Timeout or exhaustion therefore does not prove that an in-game layout is impossible.
 
-## 6. Validation and limits
+## 6. Electric Pylon coverage
+
+Datasets that enable the Electric Pylon with catalog supply-range metadata receive a power coverage pass. After conveyor routing, the planner uses the facility power requirement and the pylon's footprint and range extension from the catalog. The Valley IV pylon extends five tiles in each horizontal direction from its 2×2 footprint. A facility is considered covered when any tile of its footprint intersects that 12×12 supply area.
+
+Existing plant-module pylons contribute coverage. A bounded CP-SAT search chooses additional pylon sites that clear facilities, conveyors, and reserved port approaches, preferring fewer pylons and sites inside the routed footprint. If the search finds no valid set, placement retries. The final blueprint dimensions and facility counts include the added pylons. This models local coverage within the PAC areas. Pylon transmission and external connections are handled in game.
+
+## 7. Validation and limits
 
 Regression coverage checks:
 
@@ -80,6 +86,7 @@ Regression coverage checks:
 - Dedicated seed-module feedback, equal return/spare seed quantities, and one startup flower per pair.
 - A standalone Sandleaf seed blueprint with zero depot frontage.
 - All four Valley IV plants use the exact 15×9 template, pylon, and eight belt cells.
+- Pylon coverage, clearance, and regional facility counts for Valley IV factory and seed-loop blueprints.
 - Physical generation/routing of every Valley IV blueprint, without fixing a particular arrangement.
 
 Pipe, environmental, and multiple-output mechanics are retained by the importer but remain outside this implementation. A routed blueprint is verified against these modeled constraints, not an in-game simulation. Startup inventory and electrical power must be provided by the player.
