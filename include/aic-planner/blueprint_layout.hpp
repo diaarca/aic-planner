@@ -59,6 +59,8 @@ struct BlueprintLayout
     std::vector<PlacedBlueprintEntity> entities;
     std::map<std::pair<int, int>, int> conveyor_cells; // (x, y) -> bitmask of ConveyorDir
     std::map<std::pair<int, int>, std::string> conveyor_items;
+    // Ordered routes, including the source and destination port tiles.
+    std::vector<std::vector<std::pair<int, int>>> conveyor_paths;
     bool is_conveyor_feasible = false;
 
     void normalize();

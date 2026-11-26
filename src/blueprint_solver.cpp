@@ -122,8 +122,8 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         }
         rotB.push_back(b);
 
-        // Stable north-input/south-output banks leave predictable routing lanes in
-        // recycling networks; simple chains retain the full rotation search.
+        // Stable port banks leave predictable routing lanes in complex networks.
+        // Ground-only routing can vary orientations outside fixed plant modules.
         if (complex_network && !entities[i].is_unloader)
         {
             const bool upright =
@@ -132,7 +132,9 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
                 standalone_plant && i == stash_entity_id
                     ? 3
                     : (upright || entities[i].loop_role == SeedLoopRole::Pylon ? 0 : 2);
-            model.AddEquality(b[rotation], 1);
+            if (options_.allow_overpasses || standalone_plant || entities[i].loop_harvest >= 0 ||
+                entities[i].loop_role == SeedLoopRole::Pylon)
+                model.AddEquality(b[rotation], 1);
             if (!standalone_plant)
             {
                 model.AddGreaterOrEqual(posX[i], 2);
@@ -313,7 +315,8 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         }
     }
 
-    if (!primary_consumer_ids.empty() && primary_total_w <= grid_w)
+    if ((!complex_network || options_.allow_overpasses) && !primary_consumer_ids.empty() &&
+        primary_total_w <= grid_w)
     {
         IntVar tier1_y = model.NewIntVar(Domain(0, grid_h - 1)).WithName("tier1_y");
         for (int cid : primary_consumer_ids)
@@ -770,7 +773,8 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         }
 
         fix_plant_paths(network, layout, standalone_plant);
-        const auto routing = route_conveyors(layout, streams, grid_w, grid_h, deadline);
+        const auto routing =
+            route_conveyors(layout, streams, grid_w, grid_h, deadline, options_.allow_overpasses);
         const auto &conflicted_stream_indices = routing.conflicted_stream_indices;
         bool complete = routing.feasible;
         if (complete && electric_pylon_)

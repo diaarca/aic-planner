@@ -1,6 +1,7 @@
 #include "blueprint_solver.hpp"
 #include "cli.hpp"
 #include "dataset.hpp"
+#include "enkad_export.hpp"
 #include "logging.hpp"
 #include "production_network.hpp"
 #include "solver.hpp"
@@ -69,6 +70,14 @@ void command_line()
     const auto compact = parse({"--compact-seconds", "0.5", "--solve-seconds", "12", "data/test"});
     check(compact.compact_seconds == 0.5 && compact.solve_seconds == 12,
           "Blueprint compaction and regional solving have separate time limits");
+    check(parse({"--export-enkad", "exports", "--plant-loop", "sandleaf", "data/valley_iv"})
+                  .enkad_directory == "exports",
+          "EnKAD export is available for plant and seed targets");
+    rejects(
+        [&] {
+            parse({"--validate", "--export-enkad", "exports", "data/test"});
+        },
+        "requires blueprint generation");
 }
 
 void layout_geometry()
@@ -438,6 +447,7 @@ void powered_blueprint(const Dataset &data)
     BlueprintOptions options;
     options.automatic_recipes = true;
     options.compact_seconds = 1e-9;
+    options.allow_overpasses = false;
     BlueprintSolver solver(data.facilities, data.region.resources, data.areas, options);
     Product target;
     target.name = "ferrium_part";
@@ -445,6 +455,15 @@ void powered_blueprint(const Dataset &data)
     check(solver.solve(target, layout) && layout.is_conveyor_feasible && layout.depot_length > 0,
           "An expired compaction budget retains the initial routed factory");
     check_power_coverage(data, target, layout);
+
+    const auto export_data = enkad_blueprint(layout, data.facilities);
+    const auto &entities = export_data.at("layers").at(0).at("entities");
+    const auto unloader = std::find_if(entities.begin(), entities.end(),
+                                       [](const auto &entry) { return entry.at("entityId") == 7; });
+    check(unloader != entities.end() &&
+              unloader->at("entityData").at("value").at("portItems") ==
+                  nlohmann::json::array({{{"portIndex", 0}, {"itemId", 63}}}),
+          "EnKAD unloaders are configured for their planned mineral");
 
     auto facilities = data.facilities;
     const auto pylon =
@@ -513,6 +532,26 @@ void plant_templates(const Dataset &data)
             {{9, 2}, loop.flower}, {{10, 2}, loop.flower}};
         check(layout.is_conveyor_feasible && layout.conveyor_items == expected,
               "Exact short internal loops and plant export belt");
+
+        const auto export_data = enkad_blueprint(layout, data.facilities);
+        const auto &layer = export_data.at("layers").at(0);
+        const auto &entities = layer.at("entities");
+        check(export_data.at("version") == 4 && layer.at("layerTag") == 3 && entities.size() == 9,
+              "EnKAD ground layer contains all five buildings and four directed belts");
+        if (loop.flower == "sandleaf")
+        {
+            const auto stash = std::find_if(entities.begin(), entities.end(),
+                                            [](const auto &e) { return e.at("entityId") == 12; });
+            check(stash != entities.end() && stash->at("x") == 6 && stash->at("y") == 6 &&
+                      stash->at("entityData").at("value").at("rotation") == 90,
+                  "EnKAD uses a reflected coordinate system and clockwise rotation");
+            const auto &first_belt = entities.at(5).at("entityData").at("value").at("points");
+            check(first_belt.size() == 4 && first_belt.front().at("type") == 1 &&
+                      first_belt.back().at("type") == 2,
+                  "The exported spline includes its source and destination ports");
+            layout.conveyor_paths.push_back(layout.conveyor_paths.front());
+            rejects([&] { enkad_blueprint(layout, data.facilities); }, "without overpasses");
+        }
     }
 }
 

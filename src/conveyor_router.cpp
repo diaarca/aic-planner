@@ -65,13 +65,15 @@ void normalize_port_order(const BlueprintLayout &layout, std::vector<StreamLink>
 } // namespace
 
 RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &streams, int grid_w,
-                              int grid_h, std::chrono::steady_clock::time_point deadline)
+                              int grid_h, std::chrono::steady_clock::time_point deadline,
+                              bool allow_overpasses)
 {
     // -------------------------------------------------------------
     // PathFinder Negotiated Congestion Conveyor Router
     // -------------------------------------------------------------
     layout.conveyor_cells.clear();
     layout.conveyor_items.clear();
+    layout.conveyor_paths.clear();
     layout.is_conveyor_feasible = false;
     auto expired = [&]
     {
@@ -279,8 +281,12 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
     auto blocked = [&](int x, int y, int stream)
     {
         const auto found = reserved_paths.find({x, y});
+        const auto &endpoints = stream_endpoints[stream];
+        const std::pair<int, int> cell{x, y};
         return facility_cells.count({x, y}) ||
-               (found != reserved_paths.end() && found->second != stream);
+               (found != reserved_paths.end() && found->second != stream) ||
+               (!allow_overpasses && cell != endpoints.start_pt && cell != endpoints.target_pt &&
+                all_port_access_cells.count(cell));
     };
 
     auto route_stream = [&](int s_idx, double p_k) -> bool
@@ -426,6 +432,7 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
 
                 // 2. Ramp Up to Overpass Bridge (Layer 1)
                 // Must continue straight ahead in current direction 'dir'
+                if (allow_overpasses)
                 {
                     int nx = x + dxy[dir][0];
                     int ny = y + dxy[dir][1];
@@ -591,7 +598,7 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
     std::vector<int> conflicted_stream_indices;
     std::set<std::pair<int, int>> final_conflicted_cells;
 
-    const int max_pf_iters = 12;
+    const int max_pf_iters = allow_overpasses ? 12 : 24;
     for (int iter = 0; iter < max_pf_iters; ++iter)
     {
         if (expired())
@@ -701,10 +708,13 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
             const auto &path = stream_paths[s_idx];
             const auto &ep = stream_endpoints[s_idx];
             int m = static_cast<int>(path.size()) - 1;
+            auto &directed = layout.conveyor_paths.emplace_back();
+            directed.emplace_back(ep.src_port.x, ep.src_port.y);
 
             for (int k = 0; k <= m; ++k)
             {
                 auto pt = std::make_pair(path[k].x, path[k].y);
+                directed.push_back(pt);
                 int mask = 0;
                 if (k == 0)
                 {
@@ -735,6 +745,7 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
                 layout.conveyor_cells[pt] |= mask;
                 layout.conveyor_items[pt] = s.item;
             }
+            directed.emplace_back(ep.dst_port.x, ep.dst_port.y);
 
             // Assign item to src and dst ports for color visualization
             for (auto &p : layout.entities[s.src_entity].ports)

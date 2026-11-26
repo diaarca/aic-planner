@@ -121,6 +121,12 @@ void BlueprintLayout::normalize()
         shifted_items[{cell.first - min_x, cell.second - min_y}] = item;
     conveyor_cells = std::move(shifted_cells);
     conveyor_items = std::move(shifted_items);
+    for (auto &path : conveyor_paths)
+        for (auto &[x, y] : path)
+        {
+            x -= min_x;
+            y -= min_y;
+        }
     bounding_width = max_x - min_x + 1;
     bounding_height = max_y - min_y + 1;
 }

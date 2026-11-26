@@ -1,6 +1,7 @@
 #include "blueprint_solver.hpp"
 #include "cli.hpp"
 #include "dataset.hpp"
+#include "enkad_export.hpp"
 #include "logging.hpp"
 #include "solver.hpp"
 #include <algorithm>
@@ -87,44 +88,65 @@ int main(int argc, char *argv[])
         BlueprintOptions blueprint_options;
         blueprint_options.automatic_recipes = data.automatic_recipes;
         blueprint_options.compact_seconds = options.compact_seconds;
+        blueprint_options.allow_overpasses = options.enkad_directory.empty();
         BlueprintSolver blueprint_solver(data.facilities, data.region.resources, data.areas,
                                          blueprint_options);
+        if (!options.enkad_directory.empty())
+            std::filesystem::create_directories(options.enkad_directory);
+        size_t exported = 0;
         std::vector<Product> producible_products;
         std::map<std::string, BlueprintLayout> layouts;
         log(LogLevel::Info, "Generating factory blueprints for ", data.products.size(),
             " product candidates");
         for (auto product : data.products)
         {
+            BlueprintLayout layout;
             try
             {
-                BlueprintLayout layout;
-                if (blueprint_solver.solve(product, layout))
-                {
-                    log(LogLevel::Info, "Blueprint generated for ", product.name);
-                    if (!options.no_layouts)
-                        layout.print();
-                    layouts[product.name] = std::move(layout);
-                    producible_products.push_back(product);
-                }
+                if (!blueprint_solver.solve(product, layout))
+                    continue;
             }
             catch (const std::invalid_argument &error)
             {
                 log(LogLevel::Warning, "Skipping ", product.name, ": ", error.what());
+                continue;
             }
+            log(LogLevel::Info, "Blueprint generated for ", product.name);
+            if (!options.no_layouts)
+                layout.print();
+            if (!options.enkad_directory.empty())
+                try
+                {
+                    const auto destination =
+                        write_enkad_blueprint(options.enkad_directory, layout, data.facilities);
+                    ++exported;
+                    log(LogLevel::Info, "EnKAD export: ", destination.string());
+                }
+                catch (const std::exception &error)
+                {
+                    log(LogLevel::Error, "Could not export ", product.name, ": ", error.what());
+                }
+            layouts[product.name] = std::move(layout);
+            producible_products.push_back(product);
         }
         log(LogLevel::Info, "Blueprints generated: ", producible_products.size(), "/",
             data.products.size());
         if (producible_products.empty())
             throw std::runtime_error("No supported, successfully routed target blueprints");
+        const bool exports_complete =
+            options.enkad_directory.empty() || exported == data.products.size();
+        if (!options.enkad_directory.empty())
+            log(exports_complete ? LogLevel::Info : LogLevel::Warning,
+                "EnKAD blueprints exported: ", exported, "/", data.products.size());
         if (options.blueprints_only)
-            return producible_products.size() == data.products.size() ? 0 : 1;
+            return producible_products.size() == data.products.size() && exports_complete ? 0 : 1;
         log(LogLevel::Info, "Optimizing regional production");
         Solver solver(producible_products, data.region.resources, data.areas, data.fuels,
                       facility_powers, data.region);
         solver.set_blueprint_layouts(layouts);
         solver.set_time_limit(options.solve_seconds);
         solver.set_render_layouts(!options.no_layouts);
-        return solver.solve() ? 0 : 1;
+        return solver.solve() && exports_complete ? 0 : 1;
     }
     catch (const std::exception &error)
     {

@@ -25,6 +25,7 @@ struct CliOptions
     TargetKind target_kind = TargetKind::SaleProduct;
     std::string folder;
     std::string target;
+    std::string enkad_directory;
     bool no_layouts = false;
     bool blueprints_only = false;
     double solve_seconds = 30.0;
