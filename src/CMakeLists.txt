@@ -10,6 +10,7 @@ set(PLANNER_LIB_SOURCES
     region.cpp
     conveyor_router.cpp
     dataset.cpp
+    enkad_export.cpp
     rendering.cpp
     recipe_graph.cpp
     production_network.cpp

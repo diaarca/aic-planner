@@ -26,6 +26,7 @@ struct BlueprintOptions
     int max_attempts = 50;
     bool automatic_recipes = false;
     double compact_seconds = 0.0;
+    bool allow_overpasses = true;
 };
 
 class BlueprintSolver

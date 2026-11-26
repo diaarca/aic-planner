@@ -96,6 +96,16 @@ Use `--compact-seconds` to give each routed blueprint an optional wall-clock bud
 ./build/bin/aic_planner --product buck_capsule_c --blueprints-only --compact-seconds 2 data/valley_iv
 ```
 
+### View a blueprint in EnKAD
+
+```sh
+./build/bin/aic_planner --plant-loop sandleaf --no-layouts --export-enkad exports data/valley_iv
+```
+
+Copy the contents of `exports/sandleaf.json`. Open a new plan, paste onto the factory grid, and click to place the blueprint. For factories with unloaders, place them against a depot bus in the editor. [EnKAD factory editor](https://enkad.enka.network/)
+
+Use `--product NAME --blueprints-only` for a single factory or omit the target to export one file per generated factory. The exporter includes recipes, configured unloader items, pylons, and directed belts. It uses the Valley IV catalog and searches for ground-only routes because EnKAD uses one belt layer. Some factories can exhaust that search. The command reports incomplete exports and returns a failure status while retaining successful files.
+
 ## Update facilities and recipes
 
 The repository contains a generated [catalog](data/catalog.json) from [AKEData](https://github.com/NagiYume/AKEDatabase). Refresh it after a game update:

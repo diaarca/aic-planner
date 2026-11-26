@@ -8,8 +8,8 @@ std::string cli_usage()
 {
     return "Usage: aic_planner [--log-level error|warning|info|debug] [--validate] [--no-layouts] "
            "[--list-products] [--product name] [--blueprints-only] [--solve-seconds seconds] "
-           "[--compact-seconds seconds] [--seed-loop seed] [--plant-loop plant] "
-           "[--list-seed-loops] <data_folder>\n";
+           "[--compact-seconds seconds] [--export-enkad directory] [--seed-loop seed] "
+           "[--plant-loop plant] [--list-seed-loops] <data_folder>\n";
 }
 
 CliOptions parse_cli(int argc, const char *const argv[])
@@ -70,6 +70,8 @@ CliOptions parse_cli(int argc, const char *const argv[])
         }
         else if (argument == "--product")
             set_target(TargetKind::SaleProduct, value());
+        else if (argument == "--export-enkad")
+            options.enkad_directory = value();
         else if (argument == "--seed-loop")
             set_target(TargetKind::Seed, value());
         else if (argument == "--plant-loop")
@@ -91,6 +93,8 @@ CliOptions parse_cli(int argc, const char *const argv[])
     }
     if (options.folder.empty())
         throw std::invalid_argument("Missing data folder; use --help for usage");
+    if (!options.enkad_directory.empty() && options.command != Command::Plan)
+        throw std::invalid_argument("--export-enkad requires blueprint generation");
     if (options.target_kind != TargetKind::SaleProduct)
     {
         if (options.command != Command::Plan)
