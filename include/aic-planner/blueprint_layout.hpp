@@ -61,9 +61,11 @@ struct BlueprintLayout
     std::map<std::pair<int, int>, std::string> conveyor_items;
     // Ordered routes, including the source and destination port tiles.
     std::vector<std::vector<std::pair<int, int>>> conveyor_paths;
+    std::vector<std::pair<int, int>> conveyor_overpasses;
     bool is_conveyor_feasible = false;
 
-    void normalize();
+    size_t belt_tiles() const;
+    std::pair<int, int> normalize();
     void print() const;
 };
 

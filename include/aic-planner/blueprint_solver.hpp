@@ -6,6 +6,7 @@
 #include "product.hpp"
 #include "recipe_graph.hpp"
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ struct BlueprintOptions
     bool automatic_recipes = false;
     double compact_seconds = 0.0;
     bool allow_overpasses = true;
+    std::optional<std::pair<int, int>> blueprint_size = std::nullopt;
 };
 
 class BlueprintSolver

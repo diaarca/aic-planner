@@ -171,7 +171,7 @@ For each area $a \in A_r$ where 2D blueprints are active:
 
 ## Implementation bounds and precision
 
-The current implementation requires a routed candidate for every product passed to the regional solver. It has no aggregate-area fallback. It supports one continuous depot segment per edge. The slot bound is computed from candidate bounding areas and positive depot demands; a region with no usable docking capacity has zero slots.
+The regional solver uses routed candidates and exact rectangular packing. It supports one continuous depot segment per edge. The slot bound is computed from candidate bounding areas and positive depot demands, and areas without usable docking capacity have zero slots.
 
 Production is integer items/minute. Factory domains are bounded by spatial and docking capacity. Gross fuel production is bounded by factory throughput; the inventory bound applies after subtracting fuel burned for power. The 48-hour inventory horizon is fixed. Consumption and per-unit cycle-time coefficients are scaled by one million, rounded upward; resource budgets are rounded downward. This avoids silently truncating fractional consumption. Prices have up to three decimal places, and integer-second fuel durations use bounded common-denominator scaling. `OPTIMAL` refers to this candidate-restricted model and conservative numerical representation. Runtime status is reported without converting feasible or unknown outcomes into optimality claims.
 

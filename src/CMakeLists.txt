@@ -1,6 +1,7 @@
 set(PLANNER_LIB_SOURCES
     area.cpp
     cli.cpp
+    blueprint_compactor.cpp
     blueprint_layout.cpp
     blueprint_solver.cpp
     facility.cpp

@@ -1,4 +1,5 @@
 #include "cli.hpp"
+#include <charconv>
 #include <cmath>
 #include <stdexcept>
 
@@ -8,7 +9,8 @@ std::string cli_usage()
 {
     return "Usage: aic_planner [--log-level error|warning|info|debug] [--validate] [--no-layouts] "
            "[--list-products] [--product name] [--blueprints-only] [--solve-seconds seconds] "
-           "[--compact-seconds seconds] [--export-enkad directory] [--seed-loop seed] "
+           "[--blueprint-size WIDTHxHEIGHT] [--compact-seconds seconds] "
+           "[--export-enkad directory] [--seed-loop seed] "
            "[--plant-loop plant] [--list-seed-loops] <data_folder>\n";
 }
 
@@ -70,6 +72,25 @@ CliOptions parse_cli(int argc, const char *const argv[])
         }
         else if (argument == "--product")
             set_target(TargetKind::SaleProduct, value());
+        else if (argument == "--blueprint-size")
+        {
+            const auto text = value();
+            const auto separator = text.find_first_of("xX");
+            const auto error = "--blueprint-size requires positive integers in WIDTHxHEIGHT format";
+            if (separator == std::string::npos)
+                throw std::invalid_argument(error);
+            auto dimension = [&](const char *begin, const char *end)
+            {
+                int number = 0;
+                const auto result = std::from_chars(begin, end, number);
+                if (result.ec != std::errc{} || result.ptr != end || number <= 0)
+                    throw std::invalid_argument(error);
+                return number;
+            };
+            options.blueprint_size = {
+                dimension(text.data(), text.data() + separator),
+                dimension(text.data() + separator + 1, text.data() + text.size())};
+        }
         else if (argument == "--export-enkad")
             options.enkad_directory = value();
         else if (argument == "--seed-loop")
@@ -95,6 +116,8 @@ CliOptions parse_cli(int argc, const char *const argv[])
         throw std::invalid_argument("Missing data folder; use --help for usage");
     if (!options.enkad_directory.empty() && options.command != Command::Plan)
         throw std::invalid_argument("--export-enkad requires blueprint generation");
+    if (options.blueprint_size && options.command != Command::Plan)
+        throw std::invalid_argument("--blueprint-size requires blueprint generation");
     if (options.target_kind != TargetKind::SaleProduct)
     {
         if (options.command != Command::Plan)

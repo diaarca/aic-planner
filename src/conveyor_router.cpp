@@ -1,5 +1,6 @@
 #include "conveyor_router.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <queue>
@@ -74,6 +75,7 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
     layout.conveyor_cells.clear();
     layout.conveyor_items.clear();
     layout.conveyor_paths.clear();
+    layout.conveyor_overpasses.clear();
     layout.is_conveyor_feasible = false;
     auto expired = [&]
     {
@@ -289,6 +291,17 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
                 all_port_access_cells.count(cell));
     };
 
+    struct Parent
+    {
+        int x, y, layer, dir;
+    };
+    constexpr int ground_step_cost = 10;
+    constexpr int bridge_step_cost = 30;
+    constexpr int unreachable = 1'000'000'000;
+    // Contiguous storage indexed by tile, then layer and incoming direction.
+    std::vector<std::array<int, 8>> dist(W * H);
+    std::vector<std::array<Parent, 8>> parent(W * H);
+
     auto route_stream = [&](int s_idx, double p_k) -> bool
     {
         const auto &ep = stream_endpoints[s_idx];
@@ -329,51 +342,46 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
             return true;
         }
 
+        // Every transition advances one tile and costs at least 10.
+        auto lower_bound = [&](int x, int y) {
+            return ground_step_cost *
+                   (std::abs(x - target_pt.first) + std::abs(y - target_pt.second));
+        };
         struct QNode
         {
             int cost;
+            int estimate;
             int x, y, layer, dir;
             bool operator>(const QNode &other) const
             {
-                return cost > other.cost;
+                return estimate == other.estimate ? cost < other.cost : estimate > other.estimate;
             }
         };
 
-        const int INF = 1e9;
-        // dist[W][H][2][4]
-        std::vector<std::vector<std::vector<std::vector<int>>>> dist(
-            W, std::vector<std::vector<std::vector<int>>>(
-                   H, std::vector<std::vector<int>>(2, std::vector<int>(4, INF))));
-
-        struct Parent
-        {
-            int x, y, layer, dir;
-        };
-        std::vector<std::vector<std::vector<std::vector<Parent>>>> parent(
-            W,
-            std::vector<std::vector<std::vector<Parent>>>(
-                H, std::vector<std::vector<Parent>>(2, std::vector<Parent>(4, {-1, -1, -1, -1}))));
+        for (auto &tile : dist)
+            tile.fill(unreachable);
 
         std::priority_queue<QNode, std::vector<QNode>, std::greater<QNode>> pq;
 
-        dist[start_pt.first][start_pt.second][0][d_from_src] = 0;
-        pq.push({0, start_pt.first, start_pt.second, 0, d_from_src});
+        dist[start_pt.first * H + start_pt.second][d_from_src] = 0;
+        pq.push({0, lower_bound(start_pt.first, start_pt.second), start_pt.first, start_pt.second,
+                 0, d_from_src});
 
         const int dxy[4][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}}; // 0: N, 1: S, 2: E, 3: W
 
-        int best_target_cost = INF;
+        int best_target_cost = unreachable;
         int best_target_dir = -1;
 
         while (!pq.empty())
         {
             if (expired())
                 return false;
-            auto [c, x, y, layer, dir] = pq.top();
+            auto [c, estimate, x, y, layer, dir] = pq.top();
             pq.pop();
 
-            if (c > dist[x][y][layer][dir])
+            if (c > dist[x * H + y][layer * 4 + dir])
                 continue;
-            if (c >= best_target_cost)
+            if (estimate >= best_target_cost)
                 break;
 
             // Docking at target: must be on Ground (layer 0)
@@ -420,13 +428,12 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
                         occ_cost += 500;
                     }
 
-                    int step_cost = 10;
-                    int nc = c + step_cost + turn_cost + h_cost + occ_cost;
-                    if (nc < dist[nx][ny][0][next_d])
+                    int nc = c + ground_step_cost + turn_cost + h_cost + occ_cost;
+                    if (nc < dist[nx * H + ny][next_d])
                     {
-                        dist[nx][ny][0][next_d] = nc;
-                        parent[nx][ny][0][next_d] = {x, y, layer, dir};
-                        pq.push({nc, nx, ny, 0, next_d});
+                        dist[nx * H + ny][next_d] = nc;
+                        parent[nx * H + ny][next_d] = {x, y, layer, dir};
+                        pq.push({nc, nc + lower_bound(nx, ny), nx, ny, 0, next_d});
                     }
                 }
 
@@ -465,13 +472,12 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
                             }
                         }
 
-                        int bridge_step_cost = 30; // base (10) + bridge hardware (20)
                         int nc = c + bridge_step_cost + h_cost + occ_cost;
-                        if (nc < dist[nx][ny][1][dir])
+                        if (nc < dist[nx * H + ny][4 + dir])
                         {
-                            dist[nx][ny][1][dir] = nc;
-                            parent[nx][ny][1][dir] = {x, y, layer, dir};
-                            pq.push({nc, nx, ny, 1, dir});
+                            dist[nx * H + ny][4 + dir] = nc;
+                            parent[nx * H + ny][4 + dir] = {x, y, layer, dir};
+                            pq.push({nc, nc + lower_bound(nx, ny), nx, ny, 1, dir});
                         }
                     }
                 }
@@ -501,13 +507,12 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
                             occ_cost += 500;
                         }
 
-                        int step_cost = 10;
-                        int nc = c + step_cost + h_cost + occ_cost;
-                        if (nc < dist[nx][ny][0][dir])
+                        int nc = c + ground_step_cost + h_cost + occ_cost;
+                        if (nc < dist[nx * H + ny][dir])
                         {
-                            dist[nx][ny][0][dir] = nc;
-                            parent[nx][ny][0][dir] = {x, y, layer, dir};
-                            pq.push({nc, nx, ny, 0, dir});
+                            dist[nx * H + ny][dir] = nc;
+                            parent[nx * H + ny][dir] = {x, y, layer, dir};
+                            pq.push({nc, nc + lower_bound(nx, ny), nx, ny, 0, dir});
                         }
                     }
 
@@ -538,13 +543,12 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
                             }
                         }
 
-                        int bridge_step_cost = 30;
                         int nc = c + bridge_step_cost + h_cost + occ_cost;
-                        if (nc < dist[nx][ny][1][dir])
+                        if (nc < dist[nx * H + ny][4 + dir])
                         {
-                            dist[nx][ny][1][dir] = nc;
-                            parent[nx][ny][1][dir] = {x, y, layer, dir};
-                            pq.push({nc, nx, ny, 1, dir});
+                            dist[nx * H + ny][4 + dir] = nc;
+                            parent[nx * H + ny][4 + dir] = {x, y, layer, dir};
+                            pq.push({nc, nc + lower_bound(nx, ny), nx, ny, 1, dir});
                         }
                     }
                 }
@@ -569,7 +573,7 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
             {
                 break;
             }
-            Parent p = parent[cx][cy][clayer][cdir];
+            Parent p = parent[cx * H + cy][clayer * 4 + cdir];
             cx = p.x;
             cy = p.y;
             clayer = p.layer;
@@ -599,7 +603,7 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
     std::set<std::pair<int, int>> final_conflicted_cells;
 
     const int max_pf_iters = allow_overpasses ? 12 : 24;
-    for (int iter = 0; iter < max_pf_iters; ++iter)
+    for (int iter = 0; iter <= max_pf_iters; ++iter)
     {
         if (expired())
             return {};
@@ -638,6 +642,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
 
         conflicted_stream_indices = cur_conflicted_streams;
         final_conflicted_cells = conflicted_cells;
+        if (iter == max_pf_iters)
+            break;
 
         // Increase historical penalty on conflicted cells
         for (const auto &[cx, cy] : conflicted_cells)
@@ -715,6 +721,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
             {
                 auto pt = std::make_pair(path[k].x, path[k].y);
                 directed.push_back(pt);
+                if (path[k].layer == 1)
+                    layout.conveyor_overpasses.push_back(pt);
                 int mask = 0;
                 if (k == 0)
                 {

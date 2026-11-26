@@ -1,3 +1,4 @@
+#include "blueprint_compactor.hpp"
 #include "blueprint_solver.hpp"
 #include "cli.hpp"
 #include "dataset.hpp"
@@ -12,6 +13,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 
 using namespace aic;
@@ -78,6 +80,42 @@ void command_line()
             parse({"--validate", "--export-enkad", "exports", "data/test"});
         },
         "requires blueprint generation");
+    rejects([&] { parse({"--share-crops", "data/valley_iv"}); }, "Unknown argument");
+    check(parse({"--blueprint-size", "62x50", "data/valley_iv"}).blueprint_size ==
+              std::make_pair(62, 50),
+          "Blueprint size parses separate width and height limits");
+    for (const auto *size :
+         {"0x40", "40", "40x", "x50", "40x50x5", "40x2.5", "-1x50", "9999999999999999999x40"})
+        rejects([&] { parse({"--blueprint-size", size, "data/test"}); }, "WIDTHxHEIGHT");
+    rejects(
+        [&] {
+            parse({"--validate", "--blueprint-size", "62x50", "data/valley_iv"});
+        },
+        "requires blueprint generation");
+}
+
+void facility_label_width()
+{
+    BlueprintLayout layout;
+    layout.bounding_width = 3;
+    layout.bounding_height = 1;
+    PlacedBlueprintEntity entity;
+    entity.type = "shredding_unit";
+    entity.name = "shredding_unit_10";
+    entity.code = "S10";
+    entity.width = 3;
+    entity.height = 1;
+    layout.entities.push_back(entity);
+    std::ostringstream rendered;
+    auto *previous = std::cout.rdbuf(rendered.rdbuf());
+    layout.print();
+    std::cout.rdbuf(previous);
+    auto plain = rendered.str();
+    for (size_t start = plain.find("\033["); start != std::string::npos;
+         start = plain.find("\033[", start))
+        plain.erase(start, plain.find('m', start) - start + 1);
+    check(plain.find("│  S10 │") != std::string::npos,
+          "A three-character facility label preserves the terminal row width");
 }
 
 void layout_geometry()
@@ -125,6 +163,28 @@ void layout_geometry()
           "Normalization includes belts and shifts ports and item metadata with their entities");
 }
 
+void routed_compaction()
+{
+    BlueprintLayout layout;
+    PlacedBlueprintEntity source;
+    source.width = source.height = 1;
+    source.ports.push_back({0, 0, false, 1, 0, TransportMedium::Solid, {}});
+    PlacedBlueprintEntity sink;
+    sink.x = 6;
+    sink.width = sink.height = 1;
+    sink.ports.push_back({6, 0, true, -1, 0, TransportMedium::Solid, {}});
+    layout.entities = {source, sink};
+    std::vector<StreamLink> streams{{0, 0, 1, 0, "ore", 0.5}};
+    check(route_conveyors(layout, streams, 7, 1).feasible, "Straight belt fixture must route");
+    compact_routed_blueprint(layout, streams, {{4, 0}},
+                             std::chrono::steady_clock::time_point::min());
+    check(layout.bounding_width == 5 && layout.entities.back().ports.front().x == 4 &&
+              layout.conveyor_cells.size() == 3 &&
+              layout.conveyor_paths.front() ==
+                  std::vector<std::pair<int, int>>{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}},
+          "Compaction removes belt tiles while retaining both ports and the reserved approach");
+}
+
 void dependencies(const Dataset &fixture)
 {
     RecipeGraph graph(fixture.facilities, fixture.region.resources);
@@ -154,6 +214,18 @@ void dependencies(const Dataset &fixture)
     facilities[0].inputs[0].type = TransportMedium::Pipe;
     RecipeGraph pipes(facilities, fixture.region.resources);
     rejects([&] { pipes.validate_target("ferrium_part"); }, "pipe transport");
+    facilities = fixture.facilities;
+    auto &refinery = facilities.front();
+    auto faster_recipe = refinery.recipes.front();
+    faster_recipe.name = "faster_recipe";
+    faster_recipe.time /= 2;
+    faster_recipe.ingredients.front().item = "missing_ingredient";
+    refinery.recipes.push_back(faster_recipe);
+    RecipeGraph final_recipes(facilities, fixture.region.resources, true);
+    const auto plan = final_recipes.plan_target("ferrium");
+    check(plan.steps.size() == 1 && plan.steps.front().recipe == &refinery.recipes.front() &&
+              std::abs(plan.target_rate - 0.5) < 1e-8,
+          "An unavailable faster final recipe must leave the feasible full-speed recipe");
 }
 void invalid_datasets(const std::filesystem::path &root)
 {
@@ -262,6 +334,9 @@ void production_flows(const Dataset &data)
         {
             check(step.cycles_per_second <= step.instances / step.recipe->time + 1e-8,
                   "Machine capacity must cover recipe flow");
+            if (step.recipe->products.front().item == product.name)
+                check(std::abs(step.cycles_per_second * step.recipe->time - step.instances) < 1e-8,
+                      "Final facilities must run at full speed for " + product.name);
             for (const auto &ingredient : step.recipe->ingredients)
                 net[ingredient.item] -= step.cycles_per_second * ingredient.amount;
             for (const auto &output : step.recipe->products)
@@ -404,6 +479,15 @@ void standalone_seed_loop(const Dataset &data)
     check(with_external_flowers.plan_target("sandleaf_seed").external_rates.empty(),
           "Seed-loop exception must remain closed even when flowers are listed as available "
           "external supplies");
+    auto facilities = data.facilities;
+    for (auto &facility : facilities)
+        if (facility.name == "planting_unit")
+            for (auto &recipe : facility.recipes)
+                if (recipe.products.front().item == "sandleaf")
+                    recipe.time *= 2;
+    RecipeGraph slow_recycling(facilities, data.region.resources, true);
+    rejects([&] { slow_recycling.plan_target("sandleaf_seed"); },
+            "cannot run at full utilization");
     check(plan.steps.size() == 2 && plan.steps[0].instances == 1 && plan.steps[1].instances == 1,
           "Standalone seed module uses exactly one picker and one planter");
     check(std::abs(plan.target_rate - 0.5) < 1e-9,
@@ -486,10 +570,8 @@ void plant_templates(const Dataset &data)
     check(loops.size() == 4, "Four Valley IV plants have closed production loops");
     BlueprintOptions options;
     options.automatic_recipes = true;
-    auto exact_area = data.areas;
-    exact_area.front().pac_width = 15;
-    exact_area.front().pac_height = 9;
-    BlueprintSolver solver(data.facilities, data.region.resources, exact_area, options);
+    options.blueprint_size = {{15, 9}};
+    BlueprintSolver solver(data.facilities, data.region.resources, data.areas, options);
     for (const auto &loop : loops)
     {
         const auto plan = graph.plan_target(loop.flower);
@@ -553,6 +635,47 @@ void plant_templates(const Dataset &data)
             rejects([&] { enkad_blueprint(layout, data.facilities); }, "without overpasses");
         }
     }
+    options.blueprint_size = {{14, 9}};
+    BlueprintSolver too_narrow(data.facilities, data.region.resources, data.areas, options);
+    Product target;
+    target.name = "sandleaf";
+    BlueprintLayout layout;
+    check(!too_narrow.solve(target, layout) && too_narrow.status() == BlueprintStatus::Infeasible,
+          "A limit narrower than the fixed module must reject that blueprint");
+}
+
+void full_speed_battery(const Dataset &data)
+{
+    BlueprintOptions options;
+    options.automatic_recipes = data.automatic_recipes;
+    BlueprintSolver solver(data.facilities, data.region.resources, data.areas, options);
+    Product battery;
+    battery.name = "hc_valley_battery";
+    BlueprintLayout layout;
+    check(solver.solve(battery, layout) && layout.is_conveyor_feasible &&
+              std::abs(layout.output_per_minute - 6) < 1e-8 &&
+              layout.startup_stock.at("sandleaf") == 4,
+          "A routed two-module HC Valley Battery factory makes six batteries per minute");
+    std::set<std::string> seed_modules;
+    int packagers = 0;
+    for (const auto &entity : layout.entities)
+    {
+        if (entity.type == "seed_picking_unit")
+        {
+            seed_modules.insert(entity.seed_loop);
+            check(std::abs(entity.utilization - 5.0 / 6) < 1e-8,
+                  "Each Sandleaf module provides 25 flowers per minute");
+        }
+        if (entity.type == "packaging_unit")
+        {
+            ++packagers;
+            check(std::abs(entity.utilization - 1) < 1e-8,
+                  "The HC Valley Battery packaging unit runs at full planned load");
+        }
+    }
+    check(seed_modules.size() == 2 && packagers == 1,
+          "Two independent crop modules supply one packaging unit");
+    check_power_coverage(data, battery, layout);
 }
 
 void regional_model()
@@ -678,7 +801,9 @@ int main(int argc, char **argv)
         const auto root = std::filesystem::path(argv[1]);
         const auto fixture = Dataset::load(root / "data/test");
         command_line();
+        facility_label_width();
         layout_geometry();
+        routed_compaction();
         dependencies(fixture);
         invalid_datasets(root);
         const auto imported = Dataset::load(root / "data/valley_iv");
@@ -701,6 +826,7 @@ int main(int argc, char **argv)
         production_flows(imported);
         standalone_seed_loop(imported);
         plant_templates(imported);
+        full_speed_battery(imported);
         powered_blueprint(imported);
         regional_model();
         blueprint(fixture);

@@ -25,7 +25,7 @@ flowchart LR
 
 Load the reported starter flowers directly into each seed-picking unit. Its paired planter receives only its returned seeds and sends flowers back to that picker. No recurring flower or seed imports or depot frontage are needed. A second planter converts the spare seeds to plants for downstream machines or a protocol stash. Electrical power is still required.
 
-After warmup, picking and planting overlap. With the recorded two-second recipes, the loop exports one spare seed every two seconds, or **30 plants/minute** through the harvesting planter. The startup report includes two flowers per full-speed picker for the concurrent recipe cycles. Belt travel can require more circulating stock during warmup. Crop-dependent factory candidates are scaled to one module per crop. The regional optimizer can replicate factories to meet higher demand.
+After warmup, picking and planting overlap. With the recorded two-second recipes, the loop exports one spare seed every two seconds, or **30 plants/minute** through the harvesting planter. The startup report includes two flowers per full-speed picker for the concurrent recipe cycles. Belt travel can require more circulating stock during warmup. Manufacturing blueprints use enough crop modules to supply a full-speed final facility. The regional optimizer can replicate the complete factory.
 
 Generate the small depot-free module with:
 
@@ -38,7 +38,7 @@ Generate the small depot-free module with:
 
 The plant blueprint is the user's fixed 15×9 arrangement: planter, picker, planter across the top; stash and 2×2 electric pylon below. Its eight belt cells include a leftward export turn above the pylon. All four Valley IV plants share the same geometry and recipe-derived items. In larger factories, preserve the three internal connections, pylon position, and module envelope; route harvested plants directly downstream instead of adding another stash. The pylon still needs connection to the power network; electrical wire routing is not simulated.
 
-The revised material-balance model allows productive loops, while rejecting loops whose input/output balance cannot provide net target output. It handles multi-ingredient recipes at every stage. Facility counts come from the balanced operation rates and actual recipe cycle times; some installed machines run below full utilization. Blueprint legends include their recipe IDs and utilization.
+The revised material-balance model allows productive loops, while rejecting loops whose input/output balance cannot provide net target output. It handles multi-ingredient recipes at every stage. Facility counts come from the balanced operation rates and actual recipe cycle times; upstream facilities can run below full utilization while supplying the final facility at full speed. Blueprint legends include their recipe IDs and utilization.
 
 ## Physical connections matter too
 

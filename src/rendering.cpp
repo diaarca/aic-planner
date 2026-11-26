@@ -137,6 +137,22 @@ std::string get_facility_code(const std::string &type, int instance_idx = 0)
     return "XX";
 }
 
+// A terminal cell is two columns wide. Spread longer facility codes across its footprint.
+static std::string facility_label_cell(const std::string &code, int width, int column)
+{
+    const size_t capacity = static_cast<size_t>(width) * 2;
+    const size_t length = std::min(code.size(), capacity);
+    const size_t start = std::min(static_cast<size_t>(width / 2) * 2, capacity - length);
+    std::string text(2, ' ');
+    for (size_t i = 0; i < text.size(); ++i)
+    {
+        const size_t offset = static_cast<size_t>(column) * 2 + i;
+        if (offset >= start && offset - start < length)
+            text[i] = code[offset - start];
+    }
+    return text;
+}
+
 void BlueprintLayout::print() const
 {
     if (entities.empty())
@@ -180,7 +196,6 @@ void BlueprintLayout::print() const
 
     for (const auto &e : entities)
     {
-        int cx = e.x + e.width / 2;
         int cy = e.y + e.height / 2;
         int fg = (e.color_code == 33 || e.color_code == 160 || e.color_code == 34) ? 15 : 16;
 
@@ -194,14 +209,7 @@ void BlueprintLayout::print() const
                 CellInfo ci;
                 ci.bg = e.color_code;
                 ci.fg = fg;
-                ci.text = "  ";
-
-                if (cur_x == cx && cur_y == cy)
-                {
-                    ci.text = e.code;
-                    if (ci.text.size() == 1)
-                        ci.text += " ";
-                }
+                ci.text = cur_y == cy ? facility_label_cell(e.code, e.width, dx) : "  ";
 
                 for (const auto &p : e.ports)
                 {
@@ -483,8 +491,8 @@ void Solver::display_solution()
             int64_t total_factories = 0;
             for (size_t a = 0; a < areas_.size(); ++a)
                 total_factories += SolutionIntegerValue(response_, factories_in_area_[p][a]);
-            std::cout << products_[p].name << ": " << produced << " units [" << total_factories
-                      << " factories]" << std::endl;
+            std::cout << products_[p].name << ": " << produced << " units ["
+                      << total_factories << " factories]" << std::endl;
         }
     }
 
@@ -510,8 +518,8 @@ void Solver::display_solution()
                 int64_t num_f = SolutionIntegerValue(response_, factories_in_area_[p][a]);
                 if (num_f > 0)
                 {
-                    std::cout << "  - " << products_[p].name << ": " << num_f << " factories"
-                              << std::endl;
+                    std::cout << "  - " << products_[p].name << ": " << num_f
+                              << " factories" << std::endl;
                     used_space +=
                         num_f * (products_[p].factory_width * products_[p].factory_height);
                     used_depot += num_f * products_[p].factory_depot;
@@ -644,10 +652,10 @@ void Solver::display_area_layouts()
                 int W_0 = layout.bounding_width;
                 int H_0 = layout.bounding_height;
 
-                placed_summary.push_back(products_[p_idx].name + " [" + std::to_string(bw) + "x" +
-                                         std::to_string(bh) + " @ (" + std::to_string(bx) + "," +
-                                         std::to_string(by) + ") rot:" + std::to_string(rot) +
-                                         "°]");
+                placed_summary.push_back(products_[p_idx].name + " [" +
+                                         std::to_string(bw) + "x" + std::to_string(bh) + " @ (" +
+                                         std::to_string(bx) + "," + std::to_string(by) +
+                                         ") rot:" + std::to_string(rot) + "°]");
 
                 // Place entities
                 for (const auto &entity : layout.entities)
@@ -655,7 +663,6 @@ void Solver::display_area_layouts()
                     const auto placed = rotate_entity(entity, W_0, H_0, rot);
                     const int gx = bx + placed.x, gy = by + placed.y;
                     const int ew = placed.width, eh = placed.height;
-                    int cx = gx + ew / 2;
                     int cy = gy + eh / 2;
                     int fg = (entity.color_code == 33 || entity.color_code == 160 ||
                               entity.color_code == 34)
@@ -671,13 +678,7 @@ void Solver::display_area_layouts()
                             CellInfo ci;
                             ci.bg = entity.color_code;
                             ci.fg = fg;
-                            ci.text = "  ";
-                            if (cur_x == cx && cur_y == cy)
-                            {
-                                ci.text = entity.code;
-                                if (ci.text.size() == 1)
-                                    ci.text += " ";
-                            }
+                            ci.text = cur_y == cy ? facility_label_cell(entity.code, ew, dx) : "  ";
                             grid[{cur_x, cur_y}] = ci;
                         }
                     }
