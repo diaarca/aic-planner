@@ -8,6 +8,12 @@
 
 namespace aic
 {
+static double seed_loop_period(const SeedLoopSpec &loop)
+{
+    return std::max(
+        {loop.picker->time, loop.planter->time, static_cast<double>(solid_belt_seconds_per_item)});
+}
+
 RecipeGraph::RecipeGraph(const std::vector<Facility> &facilities,
                          const std::vector<Mineral> &resources, bool automatic)
     : automatic_(automatic)
@@ -147,13 +153,8 @@ ProductionPlan RecipeGraph::plan_target(const std::string &target) const
     for (const auto &[machine, recipe] : choices)
         if (recipe->products.front().item == target)
             target_rate = std::max(target_rate, recipe->products.front().amount / recipe->time);
-    for (const auto &loop : loops)
-        if (loop.seed == target || loop.flower == target)
-        {
-            // One seed per cycle returns to the paired planter; one is exported.
-            target_rate = 1.0 / (loop.picker->time + loop.planter->time);
-            break;
-        }
+    if (standalone)
+        target_rate = 1.0 / seed_loop_period(*standalone);
     if (target_rate == 0)
         throw std::invalid_argument(first_problem.empty() ? "No recipe for '" + target + "'"
                                                           : first_problem);
@@ -222,8 +223,8 @@ ProductionPlan RecipeGraph::plan_target(const std::string &target) const
     for (const auto &loop : loops)
         for (const auto &step : plan.steps)
             if (step.recipe == loop.picker)
-                module_scale = std::max(module_scale, step.cycles_per_second *
-                                                          (loop.picker->time + loop.planter->time));
+                module_scale =
+                    std::max(module_scale, step.cycles_per_second * seed_loop_period(loop));
     if (module_scale > 1 + 1e-8)
     {
         plan.target_rate /= module_scale;
@@ -239,7 +240,7 @@ ProductionPlan RecipeGraph::plan_target(const std::string &target) const
 
     // Turn recognized seed feedback into independent picker/planter modules.
     // A dedicated planter returns one flower; the picker reserves one seed for it
-    // and exports the spare seed. Start each module with one flower in the picker.
+    // and exports the spare seed.
     std::map<std::string, int> initial_flowers;
     for (const auto &loop : loops)
     {
@@ -254,8 +255,8 @@ ProductionPlan RecipeGraph::plan_target(const std::string &target) const
         const double recycle_rate = picker->cycles_per_second;
         if (planter->cycles_per_second + 1e-8 < recycle_rate)
             throw std::invalid_argument("Seed loop lacks its recycling planter");
-        const int modules = static_cast<int>(
-            std::ceil(recycle_rate * (loop.picker->time + loop.planter->time) - 1e-8));
+        const int modules =
+            std::max(1, static_cast<int>(std::ceil(recycle_rate * seed_loop_period(loop) - 1e-8)));
         picker->instances = modules;
         picker->seed_loop = loop.seed;
         picker->loop_role = SeedLoopRole::Picker;
@@ -274,13 +275,44 @@ ProductionPlan RecipeGraph::plan_target(const std::string &target) const
             planter->seed_loop = loop.seed;
             planter->loop_role = SeedLoopRole::Harvest;
         }
-        initial_flowers[loop.flower] += modules;
+        // Stock the concurrent recipe cycles. A routed loop may also carry stock in transit.
+        const int flowers_per_picker = std::max(
+            1, static_cast<int>(std::ceil(
+                   recycle_rate / modules * (loop.picker->time + loop.planter->time) - 1e-8)));
+        initial_flowers[loop.flower] += modules * flowers_per_picker;
         // Append only after both iterators have been used; vector growth invalidates them.
         plan.steps.push_back(paired);
     }
     plan.steps.erase(std::remove_if(plan.steps.begin(), plan.steps.end(),
                                     [](const ProductionStep &step) { return step.instances <= 0; }),
                      plan.steps.end());
+
+    // A producer needs enough output ports to reach its downstream machines.
+    // The flow allocator still checks the exact connections and input capacity.
+    std::map<std::string, int> incoming_belts, producing_steps;
+    for (const auto &step : plan.steps)
+    {
+        ++producing_steps[step.recipe->products.front().item];
+        std::map<std::string, double> demand;
+        for (const auto &ingredient : step.recipe->ingredients)
+            demand[ingredient.item] += ingredient.amount * step.cycles_per_second / step.instances;
+        for (const auto &[item, rate] : demand)
+            incoming_belts[item] +=
+                step.instances *
+                static_cast<int>(std::ceil(rate * solid_belt_seconds_per_item - 1e-8));
+    }
+    for (auto &step : plan.steps)
+    {
+        const auto &item = step.recipe->products.front().item;
+        if (step.loop_role != SeedLoopRole::None || producing_steps.at(item) != 1 ||
+            plan.external_rates.count(item))
+            continue;
+        const int ports =
+            std::count_if(step.facility->outputs.begin(), step.facility->outputs.end(),
+                          [](const Port &port) { return port.type == TransportMedium::Solid; });
+        if (ports > 0)
+            step.instances = std::max(step.instances, (incoming_belts[item] + ports - 1) / ports);
+    }
 
     // Productive cycles need initial stock even though their steady-state net input is zero.
     std::map<std::string, std::vector<std::string>> dependencies;
