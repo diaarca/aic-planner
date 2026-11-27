@@ -124,6 +124,10 @@ def convert_port(port, width, depth):
     return result
 
 
+def transport(phase):
+    return {2: "liquid", 4: "gas"}.get(phase, "solid")
+
+
 def convert(tables, version, hashes, aliases):
     buildings, crafts, groups, items, localization = (tables[name] for name in CORE_TABLES)
     for name, table in tables.items():
@@ -209,8 +213,42 @@ def convert(tables, version, hashes, aliases):
                            "properties": building,
                            "specializations": {name: table[identity] for name in SPECIALIZATION_TABLES
                                                if identity in (table := tables[name])}})
+    for identity, router in sorted(tables["FactoryLiquidRouterTable"].items()):
+        if identity in buildings:
+            continue
+        width, depth = router["range"]["x"], router["range"]["z"]
+        ports = {}
+        for side in ("input", "output"):
+            ports[side] = [convert_port({"trans": transform, "index": index,
+                                        "isOutput": side == "output", "isPipe": True}, width, depth)
+                           for index, transform in enumerate(router[side + "Ports"])]
+        facilities.append({"id": identity, "name": identity,
+                           "display_name": localized(router["liquidUnitData"], localization, identity),
+                           "power": 0, "width": width, "height": depth, "place_domains": [],
+                           "inputs": ports["input"], "outputs": ports["output"],
+                           "properties": {}, "specializations": {"FactoryLiquidRouterTable": router}})
     by_id = {f["id"]: f for f in facilities}
     recipes = []
+    factory_items = tables["FactoryItemTable"]
+    for facility in facilities:
+        specs = facility["specializations"]
+        if activation := specs.get("FactoryTransmuterTable"):
+            item_id = activation["consumeItem"]
+            used_items.add(item_id)
+            facility["activation"] = {
+                "item": aliases["items"].get(item_id, item_id),
+                "transport": transport(factory_items[item_id]["phaseType"]),
+                "per_minute": positive(activation["consumeRate"], item_id + " activation rate"),
+                "port": integer(activation["consumeBindings"], item_id + " activation port", zero=True),
+            }
+        if disposal := specs.get("FactoryFluidConsumeTable"):
+            per_minute = 60_000 / positive(disposal["msPerRound"], facility["id"] + " disposal time")
+            for item_id in disposal["liquidable"]:
+                used_items.add(item_id)
+            facility["disposal_rates"] = {
+                aliases["items"].get(item_id, item_id): per_minute
+                for item_id in disposal["liquidable"]
+            }
     for identity, craft in sorted(crafts.items()):
         if craft["id"] != identity:
             raise ValueError(f"Recipe ID mismatch: {identity}")
@@ -235,7 +273,8 @@ def convert(tables, version, hashes, aliases):
                         raise ValueError(f"{identity}: unknown item {item_id}")
                     used_items.add(item_id)
                     values.append({"id": item_id, "item": aliases["items"].get(item_id, item_id),
-                                   "amount": positive(value["count"], identity + " quantity")})
+                                   "amount": positive(value["count"], identity + " quantity"),
+                                   "transport": transport(factory_items.get(item_id, {}).get("phaseType"))})
                 if not values:
                     raise ValueError(f"{identity}: empty {source} group")
                 batches.append(values)
@@ -251,6 +290,11 @@ def convert(tables, version, hashes, aliases):
             reasons.append("multiple buffer groups")
         if len(converted["products"][0]) != 1:
             reasons.append("multiple outputs")
+        if identity.startswith("formation_magic_"):
+            reasons.append("array projection")
+        byproduct = craft.get("byproduct")
+        if byproduct and byproduct["count"] > 0 and byproduct["prob"] > 0:
+            reasons.append("probabilistic byproduct")
         recipes.append({"id": identity, "name": identity, "facility_id": machine,
                         "group_id": group_id, "time": duration,
                         "ingredients": [x for batch in converted["ingredients"] for x in batch],
@@ -290,7 +334,8 @@ def convert(tables, version, hashes, aliases):
             "specializations": {name: tables[name] for name in SPECIALIZATION_TABLES},
             "items": [{"id": identity, "name": aliases["items"].get(identity, identity),
                        "display_name": localized(items[identity], localization, identity),
-                       "factory_properties": tables["FactoryItemTable"].get(identity, {})}
+                       "transport": transport(factory_items.get(identity, {}).get("phaseType")),
+                       "factory_properties": factory_items.get(identity, {})}
                       for identity in sorted(used_items)]}
 
 
