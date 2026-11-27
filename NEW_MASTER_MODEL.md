@@ -6,6 +6,8 @@ In the two-stage candidate-generation framework, the Master Problem optimizes pr
 
 ---
 
+The equations below describe the static-depot Valley IV case. Wuling uses the same production, storage, and power balances with area-bound candidates and the placement rules described below.
+
 ## 1. Sets and Indices
 
 ### 1.1 Region and Resources
@@ -169,9 +171,15 @@ For each area $a \in A_r$ where 2D blueprints are active:
 8. **Symmetry Breaking**:
    $$active_{a, k} \ge active_{a, k+1} \quad \forall k \in \{1, \dots, K_a - 1\}$$
 
+## Wuling area-bound candidates
+
+A Wuling sale item can have several candidates keyed by item and area. Storage and fuel balances use the sum of their rates. Each candidate is subject to its local eligibility and occupies its verified coordinates when it uses configured extraction, Depot Bus pieces, or a rebuilding port. An anchored candidate can be selected at most once. In an area with only anchored candidates, the occupancy constraints apply to actual facility and route tiles. Non-overlapping equipment can therefore share space within overlapping bounding boxes. Incompatible gaseous fields also constrain candidate compatibility.
+
+An area-bound extractor has a fixed footprint and a validated supply rate. Reusing an extractor tile in another candidate makes the two layouts mutually exclusive. Optional regional facility limits bound the total installed count. Rebuilding orders add a separate required rate for each requested item and use its eligible port. Deliveries have zero market value and consume production resources and power.
+
 ## Implementation bounds and precision
 
-The regional solver uses routed candidates and exact rectangular packing. It supports one continuous depot segment per edge. The slot bound is computed from candidate bounding areas and positive depot demands, and areas without usable docking capacity have zero slots.
+The regional solver uses routed candidates. Movable rectangles with a depot demand need a usable edge segment. A candidate without a depot demand can use any legal position in its eligible area. The model supports one continuous static segment per edge.
 
 Production is integer items/minute. Factory domains are bounded by spatial and docking capacity. Gross fuel production is bounded by factory throughput; the inventory bound applies after subtracting fuel burned for power. The 48-hour inventory horizon is fixed. Consumption and per-unit cycle-time coefficients are scaled by one million, rounded upward; resource budgets are rounded downward. This avoids silently truncating fractional consumption. Prices have up to three decimal places, and integer-second fuel durations use bounded common-denominator scaling. `OPTIMAL` refers to this candidate-restricted model and conservative numerical representation. Runtime status is reported without converting feasible or unknown outcomes into optimality claims.
 

@@ -1,6 +1,6 @@
 # Mathematical Model: Blueprint Generation
 
-Blueprint generation balances steady-state materials, allocates per-machine conveyors, and searches for a placement with feasible routing and power coverage. It produces candidates for the regional master; it does not prove globally optimal factory designs.
+Blueprint generation balances steady-state materials, allocates per-machine streams, and searches for a placement with feasible routing and power coverage. This section describes the base Valley IV model. The Wuling section gives the changes for area-bound facilities and mixed transport.
 
 ## 1. Material balance, including productive loops
 
@@ -84,7 +84,15 @@ After routing and power coverage, the planner can remove a row or column by tran
 
 `--compact-seconds` gives the blueprint time for further improvement. Ground-only layouts can try cuts that require rerouting up to three belts while holding other routes in place. Remaining time goes to searching alternative placements, bounded by the first routed width and height. Completed layouts are ranked by footprint area, then belt length and perimeter. The selected layout supplies the footprint and pylon count to the regional solver. The standalone plant template stays fixed.
 
-## 8. Validation and limits
+## 8. Wuling production and placement
+
+The material balance includes the signed quantity of every recipe output. For each declared extraction item, cap external supply by the sum of available site rates. A treatment facility adds a capacity-limited destination for eligible waste. All other co-products require an explicit consumer in the material balance.
+
+Transmuter activation, climate dispersion, and array projectors consume continuously while installed. For a recipe with one of these feeds, a mixed-integer solve uses the installed count $N_{rc}$ to charge the dedicated feed rate per instance. The recipe's production still follows its own cycle rate $x_{rc}$. The pipeline allocation fixes activation flow at the designated physical port. It connects configured extractors and inserts splitters, convergers, and flow controls where needed. Pipeline capacity is two units per second. Gas and liquid use pipe ports selected from the recipe's bindings. Hydroponic crop loops include their water demand and return enough plants or seeds to sustain production.
+
+A connected Depot Bus admits loader and unloader placements along the exposed faces of its configured pieces. Area sources and any rebuilding port fix the relevant facility's position and orientation. A climate recipe requires the entire machine footprint to be inside its disperser's coverage, with incompatible climate fields kept clear of the machine. An array transformation uses a conveyor tile at configured offsets from the activated projectors. Its planned output follows the configured cycle time. [Wuling setup and routing limits](docs/WULING.md)
+
+## 9. Validation and limits
 
 Regression coverage checks:
 
@@ -99,4 +107,4 @@ Regression coverage checks:
 - Compaction keeps a valid layout when its budget expires and preserves seed-loop startup stock and throughput.
 - Physical generation/routing of every Valley IV blueprint, without fixing a particular arrangement.
 
-Pipe, environmental, and multiple-output mechanics are retained by the importer but remain outside this implementation. A routed blueprint is verified against these modeled constraints, not an in-game simulation. Startup inventory and electrical power must be provided by the player.
+Wuling regression cases cover full-speed Cuprium Part, Stable Xiranite, gas activation, local source limits, Depot Bus attachments, and rebuilding deliveries. Routed plans are verified against the modeled constraints. Startup inventory, working grid connections, and area configuration come from the player.

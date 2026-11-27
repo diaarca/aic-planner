@@ -4,7 +4,7 @@
 
 Generate factory blueprints and optimize regional production for the Automated Industry Complex in **Arknights: Endfield**.
 
-The C++17 planner uses OR-Tools CP-SAT to place machines, route conveyors, and choose a regional production mix under resource, power, storage, and space constraints. Game data is imported separately, so planning works offline.
+The C++17 planner uses OR-Tools CP-SAT to place machines, route belts and pipelines, and choose a regional production mix under resource, power, storage, and space constraints. Game data is imported separately, so planning works offline.
 
 ## Blueprint examples
 
@@ -124,8 +124,8 @@ python3 tools/import_catalog.py --latest > changes.json
 Pin a snapshot for reproducible updates, or regenerate it without network access after downloading it once:
 
 ```sh
-python3 tools/import_catalog.py --version 1.6.4@11529267-11
-python3 tools/import_catalog.py --version 1.6.4@11529267-11 --offline
+python3 tools/import_catalog.py --version 1.7.2@12153128-4
+python3 tools/import_catalog.py --version 1.7.2@12153128-4 --offline
 ```
 
 Review the change report and catalog diff before committing. New facilities, recipes, and regional sale offers are discovered automatically. Catalog-backed regions use their imported market to build the complete product objective; no manual product/price list is needed. See [data maintenance](docs/DATA.md) for caching, conversion, compatibility names, and adding supported chains.
@@ -140,9 +140,10 @@ Inspect every imported regional sale price without running placement:
 
 - `data/test` is a fixed, self-contained regression fixture for SC Valley Battery and Ferrium Part production.
 - `data/valley_iv` uses every imported permanent sale product for Valley IV (14 in the checked-in snapshot), with prices and fuel specifications loaded from the shared catalog. Outposts default to maximum permanent unlocks. Area capacities and resource budgets are inherited project settings; infrastructure counts are not populated.
+- `data/wuling` uses the same catalog for its market. Add your area dimensions, Depot Bus geometry, and local supplies before running the planner. See the [Wuling setup guide](docs/WULING.md).
 - `region.json` stores external supplies, base power, inventory capacity, catalog location, and market region ID. `areas.json` stores building areas and depot segments. Catalog-backed markets derive targets, prices, and fuel data automatically. Self-contained test fixtures retain `products.json`, `fuels.json`, and `facilities.json`.
 
-The planner supports single-output solid-item recipes with multiple ingredients and productive recycling loops. The checked-in Valley IV dataset generates blueprints for all 14 sale products. Per-machine flow allocation checks belt capacities and distinct ports, including parallel belts. Pipe, environmental, and multiple-output mechanics remain unsupported.
+The checked-in Valley IV dataset generates blueprints for all 14 sale products. Per-machine flow allocation checks transport capacity and physical ports. Wuling adds area-local extraction, liquid and gas pipelines, co-product treatment, and recipes that require a supplied gaseous environment.
 
 Valley IV blueprints include Electric Pylons to cover facilities marked as requiring power. The planner models a facility as covered when at least one footprint tile lies inside a pylon's 12×12 supply area. Pylons auto-connect in the Core AIC Area. Connect them to the grid where manual power transmission is required.
 

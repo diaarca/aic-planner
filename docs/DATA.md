@@ -21,7 +21,7 @@ The importer reads AKEData's [public data interface](https://github.com/NagiYume
 ```sh
 python3 tools/import_catalog.py --latest > changes.json
 # Or pin the manifest version ID:
-python3 tools/import_catalog.py --version 1.6.4@11529267-11 > changes.json
+python3 tools/import_catalog.py --version 1.7.2@12153128-4 > changes.json
 ./build/bin/aic_planner --validate data/valley_iv
 ctest --test-dir build --output-on-failure
 ```
@@ -44,7 +44,7 @@ For comparisons against the checked-in catalog, use the default output or first 
 - Planner coordinates are `x = source.x`, `y = depth - 1 - source.z`.
 - Source yaw 0/90/180/270 corresponds to +z/+x/-z/-x. Input-port direction is reversed to obtain its outward normal, then z is reflected into planner y. Both `fx` and `fy` are stored explicitly; corner ports are never guessed for imported records.
 - Recipe seconds are `progressRound × group.msPerRound / 1000`. `totalProgress` is not interpreted as milliseconds. Verified examples include the two-second refinery cycle and ten-second SC Valley Battery cycle.
-- Original port indices, elevations, pipe types, buffer groups, bindings, and environmental requirements are retained. Multiple buffer groups, multiple outputs, pipe requirements, and environments are reported rather than flattened into purported solver support. Convenience ingredient/output arrays accompany their original groups.
+- Original port indices, elevations, pipe types, buffer groups, bindings, and environmental requirements are retained. Ingredients and outputs include their material phase. The importer also records activation feeds, waste treatment rates, and pipeline junction geometry. The change report flags recipes with mechanics that need explicit solver support or area configuration.
 - Only the ports for solid transport are passed to placement when all selected recipes for a machine are solid-only. The complete catalog remains unchanged.
 
 ## Regional configuration
@@ -71,7 +71,7 @@ All permanent outposts default to their highest configured level, for the defaul
 
 Products, sale prices, and battery fuels load directly from the catalog. `data/valley_iv/products.json` and `fuels.json` are no longer needed. Use `aic_planner --list-products data/valley_iv` to inspect the full objective input. Source `FactoryItemTable.value` is a logistics value, not a sale price; only outpost `rewardMoneyCount` supplies sale prices.
 
-All facilities and recipes are candidates by default, filtered by facility placement domains and the region's available machine modes. Optional `enabled_facilities` and `enabled_recipes` constrain those candidates with upstream IDs. Automatic selection balances eligible recipe alternatives, including productive recycling loops, using a continuous occupied-capacity/power objective and rounded machine counts. It does not claim a globally optimal integer factory design. An explicit recipe allowlist retains strict ambiguity checking. External leaves must be declared in the regional supply list; missing recipes never create unlimited free inputs. Productive crop/seed cycles and multi-input intermediates are supported. Pipe, environmental, and multiple-output mechanics are reported as unsupported. The complete sellable product list remains intact.
+All facilities and recipes are candidates by default, filtered by facility placement domains and the region's available machine modes. Optional `enabled_facilities` and `enabled_recipes` constrain those candidates with upstream IDs. Automatic selection balances eligible recipe alternatives, including productive recycling loops, using a continuous occupied-capacity/power objective and rounded machine counts. It does not claim a globally optimal integer factory design. An explicit recipe allowlist retains strict ambiguity checking. External leaves must be declared in the regional supply list; missing recipes never create unlimited free inputs. Productive crop/seed cycles and multi-input intermediates are supported. Wuling uses recipe port bindings, local pipe supplies, and configured climate coverage. The complete sellable product list remains intact. [Wuling setup](WULING.md)
 
 The protocol stash and depot unloader are explicit catalog infrastructure facilities. Their geometry and power come from the selected records; the unloader output is oriented toward the factory.
 
@@ -89,7 +89,7 @@ The importer records unlock and market data but does not infer the player's curr
 
 `tests/fixtures/akedata_sample.json` contains only a small set of source mechanics and localization names from snapshot `1.6.4@11529267-11`, used for offline importer regression checks. It is independent of future provider changes.
 
-The runtime accepts JSON datasets. Regional supplies live in `region.json`; separate `minerals.json` and CSV files are not read. Valley IV's market and all 14 sale-product blueprints have regression coverage. Wuling's market is imported, but its manufacturing mechanics are not a complete supported regional dataset. Plant production uses the fixed 15×9 module initialized with one flower per picker, with internal recycling and direct plant output. Seed-only targets retain the smaller picker/planter pair. Both avoid recurring depot supplies for seeds.
+The runtime accepts JSON datasets. Regional supplies live in `region.json`; separate `minerals.json` and CSV files are not read. Valley IV's market and all 14 sale-product blueprints have regression coverage. Wuling tests use a synthetic area and cover physical pipe routes, climate placement, and the placeable Depot Bus. The shipped Wuling market dataset requires player-specific area and supply inputs. Plant production uses the fixed 15×9 module initialized with one flower per picker, with internal recycling and direct plant output. Seed-only targets retain the smaller picker/planter pair. Both avoid recurring depot supplies for seeds.
 
 To explicitly regenerate a self-contained fixture from a catalog-backed region:
 

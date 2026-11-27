@@ -67,6 +67,6 @@ Add `--log-level debug` to see machine counts, operation rates, placement retrie
 
 `--validate` checks production balances; it does not place facilities or route belts. `--blueprints-only` verifies those physical stages and returns failure if any requested blueprint is missing. The normal command then optimizes regional production across the successfully generated blueprints. The end-of-generation summary reports the count explicitly.
 
-Pipe, environmental, and multiple-output mechanics remain outside this solid-item implementation. Finite placement/routing searches can also time out; a timeout is not evidence that an in-game factory is impossible.
+These examples cover Valley IV solid-item factories. See [Wuling setup](WULING.md) for local pipe supplies, climates, and co-products. Finite searches may exhaust the placement or routing budget.
 
 Regional optimization defaults to 30 seconds once blueprints are generated. If the result is `FEASIBLE`, it has not proved the best possible regional portfolio. Increase the regional budget with `--solve-seconds 120` when needed.

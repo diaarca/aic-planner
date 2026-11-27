@@ -14,7 +14,7 @@ check
 Format C++ before submitting changes:
 
 ```sh
-clang-format -i src/*.cpp include/aic-planner/*.hpp tests/planner_tests.cpp
+clang-format -i src/*.cpp src/*.hpp include/aic-planner/*.hpp tests/planner_tests.cpp
 ```
 
 Python importer and fixture tests can run independently:
@@ -29,10 +29,10 @@ The project targets C++17, CMake, and OR-Tools. Use `snake_case` for functions, 
 
 - `cli` parses commands and validates option combinations; `main` runs the selected workflow.
 - `Dataset` loads and validates offline JSON, including regional catalog selections. File parsing uses the shared `json_io` helper so diagnostics identify the source file.
-- `RecipeGraph` solves steady-state material balances, rejects unproductive cycles, and constructs autonomous seed-loop plans. The production-network builder allocates exact per-machine flows to distinct ports.
+- `RecipeGraph` solves steady-state material balances, rejects unproductive cycles, and constructs autonomous seed-loop plans. The production-network builder allocates exact per-machine flows to distinct ports. `pipe_distribution` builds gas and liquid branches using the catalog logistics units.
 - `BlueprintLayout` owns physical geometry, rotation, and coordinate normalization, independently of solver headers.
 - `plant_module` validates the fixed plant geometry and preserves its internal belt paths.
-- `BlueprintSolver` places machines; the conveyor router allocates physical routes and returns conflicts for placement retries.
+- `BlueprintSolver` places machines; the congestion router allocates belt and pipe routes and returns conflicts for placement retries.
 - `Solver` chooses regional production and packs generated candidate blueprints. Production, area packing, and power constraints are separate operations; reports use the same facility power calculation as optimization.
 - Terminal rendering is separate from optimization. Diagnostics use the logging interface and stderr.
 
