@@ -24,6 +24,217 @@ namespace aic
 using namespace operations_research;
 using namespace operations_research::sat;
 
+namespace
+{
+struct LayoutSignature
+{
+    std::string key;
+    std::vector<int> entity_order, stream_order;
+};
+
+LayoutSignature layout_signature(const FactoryNetwork &network, const RecipeGraph &graph,
+                                 int grid_width, int grid_height, bool complex,
+                                 bool standalone_plant)
+{
+    using nlohmann::json;
+    const auto &entities = network.entities;
+    const auto &streams = network.streams;
+    std::vector<std::vector<std::pair<int, int>>> neighbors(entities.size());
+    for (const auto &stream : streams)
+    {
+        // Visit each incoming port before the outgoing ports, in physical port order.
+        neighbors[stream.dst_entity].emplace_back(stream.dst_port_idx, stream.src_entity);
+        const int output = entities[stream.src_entity].inputs.size() + stream.src_port_idx;
+        neighbors[stream.src_entity].emplace_back(output, stream.dst_entity);
+    }
+    for (const auto &entity : entities)
+        if (entity.loop_role == SeedLoopRole::Pylon)
+        {
+            const auto &picker = entities[entity.loop_partner];
+            neighbors[picker.id].emplace_back(picker.inputs.size() + picker.outputs.size(),
+                                              entity.id);
+        }
+
+    LayoutSignature signature;
+    std::vector<int> entity_ids(entities.size(), -1);
+    auto visit = [&](int id)
+    {
+        if (entity_ids[id] < 0)
+        {
+            entity_ids[id] = signature.entity_order.size();
+            signature.entity_order.push_back(id);
+        }
+    };
+    visit(network.stash_entity_id);
+    for (size_t i = 0; i < signature.entity_order.size(); ++i)
+    {
+        auto &adjacent = neighbors[signature.entity_order[i]];
+        std::sort(adjacent.begin(), adjacent.end());
+        for (const auto &link : adjacent)
+            visit(link.second);
+    }
+    for (const auto &entity : entities)
+        visit(entity.id);
+
+    auto port_geometry = [](const std::vector<Port> &ports)
+    {
+        auto result = json::array();
+        for (const auto &port : ports)
+            result.push_back({port.x, port.y, port.fx, port.fy, port.type});
+        return result;
+    };
+
+    auto machines = json::array();
+    std::map<std::string, int> loop_ids;
+    auto canonical_id = [&](int id) { return id < 0 ? -1 : entity_ids[id]; };
+    for (const int id : signature.entity_order)
+    {
+        const auto &entity = entities[id];
+        const int loop_id =
+            entity.seed_loop.empty()
+                ? -1
+                : loop_ids.emplace(entity.seed_loop, canonical_id(id)).first->second;
+        machines.push_back({entity.type, entity.base_w, entity.base_h, entity.base_rotation,
+                            entity.is_unloader, entity.needs_power,
+                            graph.is_resource(entity.item_consumed), entity.loop_role, loop_id,
+                            canonical_id(entity.loop_partner), canonical_id(entity.loop_harvest),
+                            port_geometry(entity.inputs), port_geometry(entity.outputs)});
+    }
+
+    std::map<std::pair<int, int>, int> stream_by_port;
+    for (size_t i = 0; i < streams.size(); ++i)
+        stream_by_port.emplace(
+            std::make_pair(canonical_id(streams[i].src_entity), streams[i].src_port_idx), i);
+    auto links = json::array();
+    for (const auto &[port, index] : stream_by_port)
+    {
+        signature.stream_order.push_back(index);
+        const auto &stream = streams[index];
+        links.push_back(
+            {port.first, port.second, canonical_id(stream.dst_entity), stream.dst_port_idx});
+    }
+    signature.key =
+        json::array({grid_width, grid_height, complex, standalone_plant,
+                     canonical_id(network.root_entity_id), network.unloader_width, machines, links})
+            .dump();
+    return signature;
+}
+
+void set_entity_labels(PlacedBlueprintEntity &placed, const FactoryEntity &entity)
+{
+    placed.name = entity.name;
+    placed.seed_loop = entity.seed_loop;
+    placed.mineral = entity.item_produced;
+    placed.recipe_name.clear();
+    placed.utilization = 0;
+    if (entity.recipe)
+    {
+        placed.recipe_name = entity.recipe->name;
+        const auto &output = entity.recipe->products.front();
+        placed.utilization =
+            entity.output_rates.at(output.item) / output.amount * entity.recipe->time;
+    }
+}
+
+void relabel_layout(BlueprintLayout &layout, const FactoryNetwork &network)
+{
+    std::map<std::string, int> type_instance_count;
+    for (const auto &entity : network.entities)
+    {
+        auto &placed = layout.entities[entity.id];
+        set_entity_labels(placed, entity);
+        placed.code = get_facility_code(entity.type, type_instance_count[entity.type]++);
+        for (auto &port : placed.ports)
+            port.item.clear();
+    }
+
+    auto label_port =
+        [&](int entity_id, const std::pair<int, int> &cell, bool is_input, const std::string &item)
+    {
+        for (auto &port : layout.entities[entity_id].ports)
+            if (port.x == cell.first && port.y == cell.second && port.is_input == is_input)
+            {
+                port.item = item;
+                break;
+            }
+    };
+    for (size_t i = 0; i < network.streams.size(); ++i)
+    {
+        const auto &stream = network.streams[i];
+        const auto &path = layout.conveyor_paths[i];
+        label_port(stream.src_entity, path.front(), false, stream.item);
+        label_port(stream.dst_entity, path.back(), true, stream.item);
+        for (auto cell = path.begin() + 1; cell != path.end() - 1; ++cell)
+            layout.conveyor_items.at(*cell) = stream.item;
+    }
+}
+
+std::map<int, std::vector<int>> dependency_rows(const FactoryNetwork &network)
+{
+    const auto &entities = network.entities;
+    const int count = entities.size();
+    std::vector<std::vector<int>> successors(count);
+    std::vector<int> incoming(count), depth(count, -1), latest(count, -1);
+    auto in_rows = [&](int id)
+    { return entities[id].seed_loop.empty() && id != network.stash_entity_id; };
+    for (const auto &stream : network.streams)
+        if (in_rows(stream.src_entity) && in_rows(stream.dst_entity))
+        {
+            successors[stream.src_entity].push_back(stream.dst_entity);
+            ++incoming[stream.dst_entity];
+        }
+
+    std::vector<int> order;
+    int ranked_count = 0;
+    for (const auto &entity : entities)
+        if (in_rows(entity.id))
+        {
+            ++ranked_count;
+            if (incoming[entity.id] == 0)
+                order.push_back(entity.id);
+            if (entity.is_unloader)
+                depth[entity.id] = 0;
+        }
+    for (size_t index = 0; index < order.size(); ++index)
+    {
+        const int id = order[index];
+        for (const int next : successors[id])
+        {
+            if (depth[id] >= 0)
+                depth[next] = std::max(depth[next], depth[id] + 1);
+            if (--incoming[next] == 0)
+                order.push_back(next);
+        }
+    }
+
+    const int sink = network.root_entity_id;
+    if (order.size() != static_cast<size_t>(ranked_count) || depth[sink] < 1)
+        return {};
+
+    latest[sink] = depth[sink];
+    std::map<int, std::vector<int>> rows;
+    for (auto it = order.rbegin(); it != order.rend(); ++it)
+    {
+        const int id = *it;
+        for (const int next : successors[id])
+            if (latest[next] >= 0)
+                latest[id] =
+                    latest[id] < 0 ? latest[next] - 1 : std::min(latest[id], latest[next] - 1);
+        if (entities[id].is_unloader)
+            rows[0].push_back(id);
+        else if (latest[id] >= 0)
+        {
+            // Keep shorter depot branches closer to assembly and place crop processors
+            // as late as their consumers allow.
+            const int stage = depth[id] < 0 ? latest[id] : std::min(depth[id] + 1, latest[id]);
+            if (stage > 0)
+                rows[stage].push_back(id);
+        }
+    }
+    return rows;
+}
+} // namespace
+
 BlueprintSolver::BlueprintSolver(const std::vector<Facility> &facilities,
                                  const std::vector<Mineral> &minerals,
                                  const std::vector<Area> &areas, BlueprintOptions options)
@@ -50,6 +261,15 @@ bool BlueprintSolver::is_mineral(const std::string &item) const
     return graph_.is_resource(item);
 }
 
+struct BlueprintSolver::PlacementProblem
+{
+    const std::string &name;
+    const ProductionPlan &plan;
+    const std::map<int, int> &module_pylons;
+    int grid_w, grid_h;
+    bool complex_network, standalone_plant;
+};
+
 bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
 {
     layout = BlueprintLayout{};
@@ -68,20 +288,15 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         product.factory_facilities[step.facility->name] += step.instances;
     auto network = build_factory_network(plan, product.name, graph_.facility("protocol_stash"),
                                          graph_.facility("unloader"));
-    auto &entities = network.entities;
-    auto &streams = network.streams;
     const auto module_pylons = add_plant_pylons(network, graph_);
+    const auto &entities = network.entities;
     for (const auto &[picker, pole] : module_pylons)
         ++product.factory_facilities[entities[pole].type];
     const bool standalone_plant =
         module_pylons.size() == 1 && plan.steps.size() == 3 && plan.external_rates.empty() &&
         entities[entities[module_pylons.begin()->first].loop_harvest].item_produced == product.name;
-    const int root_entity_id = network.root_entity_id;
-    const int stash_entity_id = network.stash_entity_id;
-    const int total_unloaders = network.total_unloaders;
-    const int unloader_width = network.unloader_width;
     product.factory_facilities["protocol_stash"] = 1;
-    product.factory_facilities["unloader"] = total_unloaders;
+    product.factory_facilities["unloader"] = network.total_unloaders;
     for (const auto &item : plan.startup_items)
         log(LogLevel::Info, blueprint_name, ": initialize recycling with ",
             plan.startup_stock.at(item), " x ", item, " in the seed-picking units (once)");
@@ -110,6 +325,76 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
                         return step.recipe->products.front().item != product.name &&
                                step.recipe->ingredients.size() > 1;
                     });
+
+    auto finish = [&]
+    {
+        product.factory_width = layout.bounding_width;
+        product.factory_height = layout.bounding_height;
+        product.factory_depot = layout.depot_length;
+        if (electric_pylon_ && layout.entities.size() > entities.size())
+            product.factory_facilities[electric_pylon_->name] +=
+                layout.entities.size() - entities.size();
+        status_ = BlueprintStatus::Success;
+        return true;
+    };
+    auto signature =
+        layout_signature(network, graph_, grid_w, grid_h, complex_network, standalone_plant);
+    if (const auto found = routed_layouts_.find(signature.key); found != routed_layouts_.end())
+    {
+        const auto &cached = found->second;
+        log(LogLevel::Info, blueprint_name, ": reusing routed layout from ",
+            cached.layout.product_name);
+        layout = cached.layout;
+        for (size_t i = 0; i < signature.entity_order.size(); ++i)
+            layout.entities[signature.entity_order[i]] =
+                cached.layout.entities[cached.entity_order[i]];
+        for (size_t i = 0; i < signature.stream_order.size(); ++i)
+            layout.conveyor_paths[signature.stream_order[i]] =
+                cached.layout.conveyor_paths[cached.stream_order[i]];
+        layout.product_name = blueprint_name;
+        layout.output_per_minute = plan.target_rate * 60;
+        layout.startup_items = plan.startup_items;
+        layout.startup_stock = plan.startup_stock;
+        relabel_layout(layout, network);
+        return finish();
+    }
+
+    const PlacementProblem problem{
+        blueprint_name, plan, module_pylons, grid_w, grid_h, complex_network, standalone_plant};
+    const auto stages = dependency_rows(network);
+    bool solved = false;
+    if (!stages.empty() && options_.placement_seconds > 0)
+    {
+        auto staged_layout = layout;
+        solved = solve_placement(problem, network, stages, staged_layout);
+        if (solved)
+            layout = std::move(staged_layout);
+        else
+            log(LogLevel::Info, blueprint_name, ": retrying without dependency rows");
+    }
+    if (!solved && !solve_placement(problem, network, {}, layout))
+        return false;
+    routed_layouts_.emplace(
+        std::move(signature.key),
+        RoutedLayout{layout, std::move(signature.entity_order), std::move(signature.stream_order)});
+    return finish();
+}
+
+bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNetwork network,
+                                      const std::map<int, std::vector<int>> &stages,
+                                      BlueprintLayout &layout)
+{
+    const auto &blueprint_name = problem.name;
+    const auto &plan = problem.plan;
+    const auto &module_pylons = problem.module_pylons;
+    const int grid_w = problem.grid_w, grid_h = problem.grid_h;
+    const bool complex_network = problem.complex_network,
+               standalone_plant = problem.standalone_plant;
+    const bool staged = !stages.empty();
+    const auto &entities = network.entities;
+    auto &streams = network.streams;
+    const int root_entity_id = network.root_entity_id, stash_entity_id = network.stash_entity_id;
+    const int total_unloaders = network.total_unloaders, unloader_width = network.unloader_width;
 
     // Build CP-SAT Model
     CpModelBuilder model;
@@ -142,10 +427,11 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
                 standalone_plant && i == stash_entity_id
                     ? 3
                     : (upright || entities[i].loop_role == SeedLoopRole::Pylon ? 0 : 2);
-            if (options_.allow_overpasses || standalone_plant || entities[i].loop_harvest >= 0 ||
-                entities[i].loop_role == SeedLoopRole::Pylon)
+            if ((!staged || i != stash_entity_id) &&
+                (options_.allow_overpasses || standalone_plant || entities[i].loop_harvest >= 0 ||
+                 entities[i].loop_role == SeedLoopRole::Pylon))
                 model.AddEquality(b[rotation], 1);
-            if (!standalone_plant)
+            if (!standalone_plant && !staged)
             {
                 model.AddGreaterOrEqual(posX[i], 2);
                 model.AddGreaterOrEqual(posY[i], 2);
@@ -181,7 +467,7 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
 
         effW.push_back(w);
         effH.push_back(h);
-        if (complex_network && !entities[i].is_unloader && !standalone_plant)
+        if (complex_network && !entities[i].is_unloader && !standalone_plant && !staged)
         {
             model.AddLessOrEqual(posX[i] + w, grid_w - 2);
             model.AddLessOrEqual(posY[i] + h, grid_h - 4);
@@ -206,6 +492,9 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
     int K = static_cast<int>(unloader_indices.size());
     if (K > 0)
     {
+        LinearExpr depot_offset;
+        if (staged)
+            depot_offset = model.NewIntVar(Domain(0, grid_w - 1));
         std::vector<IntVar> unloader_slots;
         for (int k = 0; k < K; ++k)
         {
@@ -216,7 +505,8 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         for (int k = 0; k < K; ++k)
         {
             int u_idx = unloader_indices[k];
-            model.AddEquality(posX[u_idx], LinearExpr::Term(unloader_slots[k], unloader_width));
+            model.AddEquality(posX[u_idx],
+                              depot_offset + LinearExpr::Term(unloader_slots[k], unloader_width));
         }
     }
 
@@ -227,7 +517,7 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         no_overlap.AddRectangle(intX[i], intY[i]);
     }
 
-    if (complex_network)
+    if (complex_network && !staged)
         for (int i = 0; i < N; ++i)
             for (int j = i + 1; j < N; ++j)
             {
@@ -325,8 +615,8 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         }
     }
 
-    if ((!complex_network || options_.allow_overpasses) && !primary_consumer_ids.empty() &&
-        primary_total_w <= grid_w)
+    if (!staged && (!complex_network || options_.allow_overpasses) &&
+        !primary_consumer_ids.empty() && primary_total_w <= grid_w)
     {
         IntVar tier1_y = model.NewIntVar(Domain(0, grid_h - 1)).WithName("tier1_y");
         for (int cid : primary_consumer_ids)
@@ -342,6 +632,65 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
                     primary_consumer_ids.end())
             {
                 model.AddLessOrEqual(posY[i] + effH[i], tier1_y);
+            }
+        }
+    }
+
+    if (staged)
+    {
+        std::vector<int> projected_x(N, -1);
+        const auto *previous = &stages.at(0);
+        for (const auto &[stage, row] : stages)
+        {
+            if (stage == 0)
+                continue;
+            // Wide rows need room for lateral movement between their port banks.
+            const int gap = previous->size() >= 8 || row.size() >= 8 ? 4 : 1;
+            for (const int id : row)
+            {
+                model.AddEquality(posY[id], posY[row.front()]);
+                model.AddLessOrEqual(posY[id] + effH[id] + gap, posY[previous->front()]);
+                model.AddEquality(rotB[id][2], 1);
+            }
+            previous = &row;
+        }
+
+        // Order each row by the X coordinates of its downstream port banks.
+        for (auto stage = stages.rbegin(); stage != stages.rend(); ++stage)
+        {
+            std::vector<std::pair<int, int>> ordered;
+            int width = 0;
+            for (const int id : stage->second)
+            {
+                int sum = 0, links = 0;
+                for (const auto &stream : streams)
+                    if (stream.src_entity == id && projected_x[stream.dst_entity] >= 0)
+                    {
+                        const auto &dst = entities[stream.dst_entity];
+                        const auto &src = entities[id];
+                        const int input_x = dst.base_w - 1 - dst.inputs[stream.dst_port_idx].x;
+                        const int output_x =
+                            src.is_unloader ? src.outputs[stream.src_port_idx].x
+                                            : src.base_w - 1 - src.outputs[stream.src_port_idx].x;
+                        sum += projected_x[dst.id] + input_x - output_x;
+                        ++links;
+                    }
+                ordered.emplace_back(links ? sum / links : (grid_w - entities[id].base_w) / 2, id);
+                width += entities[id].base_w;
+            }
+            if (width > grid_w)
+                continue;
+            std::sort(ordered.begin(), ordered.end());
+            int x = std::clamp(ordered.front().first, 0, grid_w - width);
+            int left = -1;
+            for (const auto &entry : ordered)
+            {
+                const int id = entry.second;
+                projected_x[id] = x;
+                x += entities[id].base_w;
+                if (left >= 0)
+                    model.AddLessOrEqual(posX[left] + effW[left], posX[id]);
+                left = id;
             }
         }
     }
@@ -551,9 +900,9 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
     }
 
     // Objective: prioritize compact bounding box and wirelength
-    model.Minimize(bbox_w * 100 + bbox_h * 100 + stream_dist * 5);
+    model.Minimize(bbox_w * 100 + bbox_h * 100 + stream_dist * (staged ? 25 : 5));
 
-    if (complex_network && !standalone_plant)
+    if (complex_network && !standalone_plant && !staged)
     {
         // Feed CP-SAT a spacious shelf layout ordered by material dependency.
         // It remains a hint: all placement and access constraints are still checked.
@@ -672,19 +1021,29 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
     }
 
     SatParameters params;
-    params.set_max_time_in_seconds(options_.placement_seconds == 0
-                                       ? 0
-                                       : (complex_network
-                                              ? std::max(options_.placement_seconds, 6.0)
-                                              : options_.placement_seconds));
-    params.set_stop_after_first_solution(complex_network);
+    const double placement_limit = complex_network && options_.placement_seconds > 0
+                                       ? std::max(options_.placement_seconds, 6.0)
+                                       : options_.placement_seconds;
+    params.set_max_time_in_seconds(placement_limit);
+    params.set_stop_after_first_solution(complex_network && !staged);
     params.set_num_search_workers(8);
     params.set_random_seed(42);
 
     const int max_conveyor_attempts = options_.max_attempts;
+    int attempted_placements = 0;
     bool power_coverage_failed = false;
     using Clock = std::chrono::steady_clock;
     auto deadline = Clock::time_point::max();
+    auto set_deadline = [&](double seconds)
+    {
+        const auto now = Clock::now();
+        const std::chrono::duration<double> budget(seconds);
+        deadline = budget < Clock::time_point::max() - now
+                       ? now + std::chrono::duration_cast<Clock::duration>(budget)
+                       : Clock::time_point::max();
+    };
+    if (staged)
+        set_deadline(placement_limit);
     std::optional<BlueprintLayout> best_layout;
     std::pair<int, int> initial_dimensions;
     IntVar placement_area;
@@ -697,19 +1056,20 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
 
     for (int attempt = 1; best_layout || attempt <= max_conveyor_attempts; ++attempt)
     {
-        if (best_layout && Clock::now() >= deadline)
-            break;
         params.set_random_seed(42 + attempt * 17);
         auto placement_model = model.Build();
-        if (best_layout)
+        if (staged || best_layout)
         {
             const double remaining = std::chrono::duration<double>(deadline - Clock::now()).count();
             if (remaining <= 0)
                 break;
-            params.set_max_time_in_seconds(remaining);
+            // Leave time in the initial staged budget for routing and another placement.
+            params.set_max_time_in_seconds(best_layout ? remaining
+                                                       : std::min(remaining, placement_limit / 2));
         }
         Model cp_model;
         cp_model.Add(NewSatParameters(params));
+        ++attempted_placements;
         CpSolverResponse response = SolveCpModel(placement_model, &cp_model);
 
         if (response.status() != CpSolverStatus::OPTIMAL &&
@@ -721,7 +1081,7 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
                 break;
             status_ = response.status() == CpSolverStatus::INFEASIBLE ? BlueprintStatus::Infeasible
                                                                       : BlueprintStatus::Timeout;
-            log(LogLevel::Warning, blueprint_name, ": ",
+            log(staged ? LogLevel::Debug : LogLevel::Warning, blueprint_name, ": ",
                 status_ == BlueprintStatus::Timeout ? "placement search timed out"
                                                     : "placement model infeasible");
             return false;
@@ -732,22 +1092,13 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         for (int i = 0; i < N; ++i)
         {
             PlacedBlueprintEntity pe;
-            pe.name = entities[i].name;
-            pe.seed_loop = entities[i].seed_loop;
-            if (entities[i].recipe)
-            {
-                pe.recipe_name = entities[i].recipe->name;
-                const auto &output = entities[i].recipe->products.front();
-                pe.utilization = entities[i].output_rates.at(output.item) / output.amount *
-                                 entities[i].recipe->time;
-            }
+            set_entity_labels(pe, entities[i]);
             pe.type = entities[i].type;
             pe.x = SolutionIntegerValue(response, posX[i]);
             pe.y = SolutionIntegerValue(response, posY[i]);
             pe.width = SolutionIntegerValue(response, effW[i]);
             pe.height = SolutionIntegerValue(response, effH[i]);
             pe.is_unloader = entities[i].is_unloader;
-            pe.mineral = entities[i].item_produced;
 
             int inst_idx = type_instance_count[pe.type]++;
             pe.code = get_facility_code(pe.type, inst_idx);
@@ -797,7 +1148,7 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
                 complete = place_electric_pylons(layout, network, *electric_pylon_, grid_w, grid_h,
                                                  reserved_cells, deadline);
         }
-        if (best_layout && Clock::now() >= deadline)
+        if (Clock::now() >= deadline)
             break;
         if (complete)
         {
@@ -813,10 +1164,7 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
 
             if (!best_layout)
             {
-                const std::chrono::duration<double> budget(options_.compact_seconds);
-                const auto now = Clock::now();
-                if (budget < deadline - now)
-                    deadline = now + std::chrono::duration_cast<Clock::duration>(budget);
+                set_deadline(options_.compact_seconds);
                 initial_dimensions = {layout.bounding_width, layout.bounding_height};
             }
             if (!standalone_plant)
@@ -986,21 +1334,14 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
             log(LogLevel::Info, blueprint_name, ": compacted blueprint from ",
                 initial_dimensions.first, " x ", initial_dimensions.second, " to ",
                 layout.bounding_width, " x ", layout.bounding_height);
-        product.factory_width = layout.bounding_width;
-        product.factory_height = layout.bounding_height;
-        product.factory_depot = layout.depot_length;
-        if (electric_pylon_ && layout.entities.size() > entities.size())
-            product.factory_facilities[electric_pylon_->name] +=
-                layout.entities.size() - entities.size();
-        status_ = BlueprintStatus::Success;
         return true;
     }
 
     status_ = BlueprintStatus::RoutingExhausted;
-    log(LogLevel::Warning, blueprint_name,
+    log(staged ? LogLevel::Debug : LogLevel::Warning, blueprint_name,
         power_coverage_failed ? ": routing and power coverage search exhausted after "
                               : ": routing search exhausted after ",
-        max_conveyor_attempts, " placements");
+        attempted_placements, " placements");
     return false;
 }
 

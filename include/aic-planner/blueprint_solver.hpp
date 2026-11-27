@@ -12,6 +12,7 @@
 
 namespace aic
 {
+struct FactoryNetwork;
 
 enum class BlueprintStatus
 {
@@ -49,7 +50,16 @@ class BlueprintSolver
     BlueprintStatus status_ = BlueprintStatus::Infeasible;
     const std::vector<Area> &areas_;
     const Facility *electric_pylon_ = nullptr;
+    struct RoutedLayout
+    {
+        BlueprintLayout layout;
+        std::vector<int> entity_order, stream_order;
+    };
+    std::map<std::string, RoutedLayout> routed_layouts_;
 
+    struct PlacementProblem;
+    bool solve_placement(const PlacementProblem &problem, FactoryNetwork network,
+                         const std::map<int, std::vector<int>> &stages, BlueprintLayout &layout);
     bool is_mineral(const std::string &item) const;
 };
 

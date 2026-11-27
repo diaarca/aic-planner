@@ -678,6 +678,67 @@ void full_speed_battery(const Dataset &data)
     check_power_coverage(data, battery, layout);
 }
 
+void placement_fallback(const Dataset &data)
+{
+    BlueprintOptions options;
+    options.automatic_recipes = data.automatic_recipes;
+    options.blueprint_size = {{17, 16}};
+    BlueprintSolver solver(data.facilities, data.region.resources, data.areas, options);
+    Product battery;
+    battery.name = "sc_valley_battery";
+    BlueprintLayout layout;
+    check(solver.solve(battery, layout) && layout.is_conveyor_feasible &&
+              layout.bounding_width <= 17 && layout.bounding_height <= 16 &&
+              layout.output_per_minute == 6,
+          "Placement must fall back when dependency rows cannot fit a valid outline");
+}
+
+void shared_layout(const Dataset &data)
+{
+    BlueprintOptions options;
+    options.automatic_recipes = data.automatic_recipes;
+    options.allow_overpasses = false;
+    BlueprintSolver solver(data.facilities, data.region.resources, data.areas, options);
+    Product buck;
+    buck.name = "buck_capsule_c";
+    Product citrome;
+    citrome.name = "canned_citrome_c";
+    BlueprintLayout buck_layout, citrome_layout;
+    check(solver.solve(buck, buck_layout) && solver.solve(citrome, citrome_layout),
+          "Both capsule variants must have a routed blueprint");
+    check(buck_layout.conveyor_paths == citrome_layout.conveyor_paths &&
+              buck_layout.conveyor_cells == citrome_layout.conveyor_cells &&
+              buck.factory_facilities == citrome.factory_facilities,
+          "Matching production graphs share placement and belt geometry");
+    check(citrome_layout.product_name == citrome.name && citrome_layout.output_per_minute == 6 &&
+              citrome_layout.startup_stock == std::map<std::string, int>{{"citrome", 1}},
+          "The shared layout reports the target product and its own starting stock");
+    const auto &filler = citrome_layout.entities.front();
+    check(filler.type == "filling_unit" && filler.mineral == citrome.name &&
+              filler.recipe_name != buck_layout.entities.front().recipe_name &&
+              std::abs(filler.utilization - 1) < 1e-8,
+          "The shared filling unit retains the new recipe and planned utilization");
+    for (const auto &entity : citrome_layout.entities)
+    {
+        check(entity.seed_loop.find("buckflower") == std::string::npos,
+              "The shared crop module uses the new seed loop");
+        for (const auto &port : entity.ports)
+            check(port.item.find("buck") == std::string::npos,
+                  "Shared layout ports carry items from the new graph");
+    }
+    std::set<std::string> items;
+    for (const auto &[cell, item] : citrome_layout.conveyor_items)
+        items.insert(item);
+    check(items == std::set<std::string>{citrome.name, "amethyst_bottle", "amethyst_fiber",
+                                         "amethyst_ore", "citrome", "citrome_powder",
+                                         "citrome_seed"},
+          "Shared layout belts carry items from the new graph");
+    check_power_coverage(data, citrome, citrome_layout);
+    check(enkad_blueprint(buck_layout, data.facilities) !=
+              enkad_blueprint(citrome_layout, data.facilities),
+          "EnKAD exports preserve variant recipes");
+}
+
 void regional_model()
 {
     Product product;
@@ -827,6 +888,8 @@ int main(int argc, char **argv)
         standalone_seed_loop(imported);
         plant_templates(imported);
         full_speed_battery(imported);
+        placement_fallback(imported);
+        shared_layout(imported);
         powered_blueprint(imported);
         regional_model();
         blueprint(fixture);

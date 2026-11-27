@@ -92,6 +92,10 @@ Run without `--no-layouts` to show the terminal factory maps. Diagnostics go to 
 
 After routing, the planner closes gaps by removing rows or columns that only carry straight belt crossings. Use `--compact-seconds` to give each routed blueprint extra time for local rerouting and alternative placements. The planner ranks valid layouts by footprint area, then by belt length, and uses the selected dimensions for regional placement.
 
+The planner first groups machines into rows by dependency depth from the depot. It orders each row by its downstream ports and reserves wider conveyor lanes next to rows with many machines. If this search cannot route a layout within its time budget, the planner retries without the dependency rows.
+
+During a run, products with matching facility geometry and conveyor connections share a routed layout. Each product keeps its own recipes, item labels, throughput, and startup stock.
+
 Use `--blueprint-size WIDTHxHEIGHT` to set a maximum search box from the start of placement. Conveyors and pylons must also fit inside it. The limit applies to every requested blueprint, and a smaller box can make routing harder.
 
 ```sh
