@@ -135,11 +135,12 @@ std::pair<int, int> BlueprintLayout::normalize()
             x -= min_x;
             y -= min_y;
         }
-    for (auto &[x, y] : conveyor_overpasses)
-    {
-        x -= min_x;
-        y -= min_y;
-    }
+    for (auto *bridges : {&conveyor_overpasses, &pipe_overpasses, &pipe_belt_crossings})
+        for (auto &[x, y] : *bridges)
+        {
+            x -= min_x;
+            y -= min_y;
+        }
     bounding_width = max_x - min_x + 1;
     bounding_height = max_y - min_y + 1;
     return {min_x, min_y};

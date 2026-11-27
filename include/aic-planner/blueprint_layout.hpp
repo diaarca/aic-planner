@@ -27,6 +27,7 @@ struct PlacedBlueprintEntity
     std::string code;
     std::string recipe_name;
     std::string seed_loop;
+    std::string operating_mode;
     double utilization = 0;
     int color_code = 39;
     int x = 0;
@@ -47,6 +48,12 @@ enum ConveyorDir
     CONV_WEST = 8
 };
 
+struct ClimateRectangle
+{
+    int environment;
+    int x, y, width, height; // Area coordinates.
+};
+
 struct BlueprintLayout
 {
     std::string product_name;
@@ -61,7 +68,14 @@ struct BlueprintLayout
     std::map<std::pair<int, int>, std::string> conveyor_items;
     // Ordered routes, including the source and destination port tiles.
     std::vector<std::vector<std::pair<int, int>>> conveyor_paths;
+    std::vector<MaterialPhase> path_phases;
+    std::string fixed_area;
+    std::pair<int, int> area_origin;
+    std::vector<std::pair<int, int>> blocked_tiles;
+    std::vector<ClimateRectangle> needed_climates, emitted_climates;
     std::vector<std::pair<int, int>> conveyor_overpasses;
+    std::vector<std::pair<int, int>> pipe_overpasses;
+    std::vector<std::pair<int, int>> pipe_belt_crossings;
     bool is_conveyor_feasible = false;
 
     size_t belt_tiles() const;

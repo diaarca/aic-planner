@@ -6,6 +6,7 @@
 #include <iostream>
 #include <limits>
 #include <numeric>
+#include <set>
 #include <stdexcept>
 
 namespace aic
@@ -71,28 +72,35 @@ void Solver::instantiate_variables()
     std::vector<std::vector<int64_t>> factory_bounds(products_.size());
     for (size_t p = 0; p < products_.size(); ++p)
     {
-        const auto &layout = product_layouts_.at(products_[p].name);
-        if (layout.bounding_width <= 0 || layout.bounding_height <= 0 || layout.depot_length <= 0)
+        const auto &layout = product_layouts_.at(products_[p].layout_key());
+        if (layout.bounding_width <= 0 || layout.bounding_height <= 0 || layout.depot_length < 0)
             throw std::invalid_argument("Invalid blueprint bounds for " + products_[p].name);
         int64_t total_factories = 0;
         for (const auto &area : areas_)
         {
             const int64_t by_area = static_cast<int64_t>(area.pac_width * area.pac_height) /
                                     (layout.bounding_width * layout.bounding_height);
-            const int64_t by_depot =
-                static_cast<int64_t>(area.pac_depot_width + area.pac_depot_height) /
-                layout.depot_length;
-            const int64_t capacity = std::min(by_area, by_depot);
+            int64_t capacity = by_area;
+            if (!products_[p].candidate_area.empty() && products_[p].candidate_area != area.name)
+                capacity = 0;
+            else if (!layout.fixed_area.empty())
+                capacity = layout.fixed_area == area.name ? std::min<int64_t>(capacity, 1) : 0;
+            else if (layout.depot_length > 0)
+                capacity = std::min(
+                    capacity, static_cast<int64_t>(area.pac_depot_width + area.pac_depot_height) /
+                                  layout.depot_length);
             factory_bounds[p].push_back(capacity);
             total_factories += capacity;
         }
         int64_t capacity_rate =
             static_cast<int64_t>(std::ceil(total_factories * 60.0 / products_[p].production_time));
         const bool fuel =
+            !products_[p].rebuilding &&
             std::any_of(fuels_.begin(), fuels_.end(),
                         [&](const Fuel &value) { return value.name == products_[p].name; });
-        production_bounds.push_back(fuel ? capacity_rate
-                                         : std::min(capacity_rate, max_inventory_rate));
+        production_bounds.push_back(fuel || products_[p].rebuilding
+                                        ? capacity_rate
+                                        : std::min(capacity_rate, max_inventory_rate));
     }
     qty_produced_.clear();
     factories_in_area_.clear();
@@ -111,8 +119,8 @@ void Solver::instantiate_variables()
     {
         int64_t bound = 0;
         for (size_t p = 0; p < products_.size(); ++p)
-            if (products_[p].name == fuel.name)
-                bound =
+            if (!products_[p].rebuilding && products_[p].name == fuel.name)
+                bound +=
                     static_cast<int64_t>(std::ceil(production_bounds[p] * fuel.duration / 60.0));
         num_batteries_active_.push_back(
             cp_model_.NewIntVar(Domain(0, bound)).WithName(fuel.name + "_active"));
@@ -140,7 +148,9 @@ void Solver::instantiate_area_slots()
             {
                 min_blueprint_area = area;
             }
-            if (layout.depot_length > 0 && layout.depot_length < min_blueprint_depot)
+            if (layout.depot_length == 0 || !layout.fixed_area.empty())
+                min_blueprint_depot = 0;
+            else if (layout.depot_length < min_blueprint_depot)
             {
                 min_blueprint_depot = layout.depot_length;
             }
@@ -169,6 +179,20 @@ void Solver::instantiate_area_slots()
                 static_cast<int>(areas_[a].pac_depot_width + areas_[a].pac_depot_height);
 
             int K = max_by_area;
+            int anchored = 0;
+            bool allows_movable = false;
+            for (const auto &product : products_)
+            {
+                if (!product.candidate_area.empty() && product.candidate_area != areas_[a].name)
+                    continue;
+                const auto &layout = product_layouts_.at(product.layout_key());
+                if (layout.fixed_area.empty())
+                    allows_movable = true;
+                else if (layout.fixed_area == areas_[a].name)
+                    ++anchored;
+            }
+            if (!allows_movable)
+                K = anchored;
             if (min_blueprint_depot > 0 && min_blueprint_depot != std::numeric_limits<int>::max())
             {
                 if (total_depot > 0)
@@ -224,6 +248,22 @@ void Solver::declare_constraints()
 
 void Solver::declare_production_constraints()
 {
+    for (const auto &[facility, limit] : region_.facility_limits)
+    {
+        LinearExpr usage;
+        int64_t installed = 0;
+        for (const auto &area : areas_)
+            if (area.area_facilities.count(facility))
+                installed += area.area_facilities.at(facility);
+        for (size_t p = 0; p < products_.size(); ++p)
+        {
+            const auto found = products_[p].factory_facilities.find(facility);
+            if (found != products_[p].factory_facilities.end())
+                for (const auto count : factories_in_area_[p])
+                    usage += LinearExpr::Term(count, static_cast<int64_t>(found->second));
+        }
+        cp_model_.AddLessOrEqual(usage, limit - installed);
+    }
     // Build the fuel map for easier lookup
     std::map<std::string, size_t> fuel_map;
     for (size_t fu = 0; fu < fuels_.size(); ++fu)
@@ -231,12 +271,22 @@ void Solver::declare_production_constraints()
         fuel_map[fuels_[fu].name] = fu;
     }
 
-    // Map of product name to product index
-    std::map<std::string, size_t> product_map;
+    std::map<std::string, LinearExpr> production_by_item;
+    std::map<std::string, LinearExpr> rebuilding_by_item;
+    std::map<std::string, double> unit_value;
     for (size_t p = 0; p < products_.size(); ++p)
     {
-        product_map[products_[p].name] = p;
+        const auto &product = products_[p];
+        if (product.rebuilding)
+            rebuilding_by_item[product.name] += qty_produced_[p];
+        else
+        {
+            production_by_item[product.name] += qty_produced_[p];
+            unit_value[product.name] = product.value;
+        }
     }
+    for (const auto &[item, rate] : region_.rebuilding_orders)
+        cp_model_.AddEquality(rebuilding_by_item[item], static_cast<int64_t>(rate));
 
     // Objective: Maximize total net value (sold products)
     LinearExpr objective;
@@ -252,16 +302,15 @@ void Solver::declare_production_constraints()
     for (size_t fu = 0; fu < fuels_.size(); ++fu)
     {
         const std::string &fuel_name = fuels_[fu].name;
-        if (product_map.count(fuel_name))
+        if (production_by_item.count(fuel_name))
         {
-            size_t p = product_map.at(fuel_name);
             int64_t d_fu = static_cast<int64_t>(fuels_[fu].duration);
             int64_t cost_coeff_fu = static_cast<int64_t>(
-                std::llround((obj_scale_factor_ * 60 / d_fu) * products_[p].value));
+                std::llround((obj_scale_factor_ * 60 / d_fu) * unit_value.at(fuel_name)));
             objective += LinearExpr::Term(num_batteries_active_[fu], -cost_coeff_fu);
 
             LinearExpr c_fuel_bal;
-            c_fuel_bal += LinearExpr::Term(qty_produced_[p], d_fu);
+            c_fuel_bal += production_by_item.at(fuel_name) * d_fu;
             c_fuel_bal += LinearExpr::Term(num_batteries_active_[fu], -60);
             cp_model_.AddGreaterOrEqual(c_fuel_bal, 0);
         }
@@ -274,15 +323,15 @@ void Solver::declare_production_constraints()
     cp_model_.Maximize(objective);
 
     // Storage Capacity Constraint
-    for (size_t p = 0; p < products_.size(); ++p)
+    for (const auto &[item, produced] : production_by_item)
     {
-        if (fuel_map.count(products_[p].name))
+        if (fuel_map.count(item))
         {
-            size_t fu = fuel_map.at(products_[p].name);
+            size_t fu = fuel_map.at(item);
             int64_t d_fu = static_cast<int64_t>(fuels_[fu].duration);
 
             LinearExpr c_storage_capa;
-            c_storage_capa += LinearExpr::Term(qty_produced_[p], d_fu);
+            c_storage_capa += produced * d_fu;
             c_storage_capa += LinearExpr::Term(num_batteries_active_[fu], -60);
             int64_t max_storage =
                 static_cast<int64_t>((region_.storage / (inventory_horizon_hours * 60.0)) * d_fu);
@@ -292,7 +341,7 @@ void Solver::declare_production_constraints()
         {
             int64_t max_storage =
                 static_cast<int64_t>(region_.storage / (inventory_horizon_hours * 60.0));
-            cp_model_.AddLessOrEqual(qty_produced_[p], max_storage);
+            cp_model_.AddLessOrEqual(produced, max_storage);
         }
     }
 
@@ -344,6 +393,41 @@ void Solver::declare_area_constraints()
         }
         int W_a = areas_[a].pac_width;
         int H_a = areas_[a].pac_height;
+        const auto eligible = [&](const Product &product)
+        {
+            const auto &layout = product_layouts_.at(product.layout_key());
+            return (product.candidate_area.empty() || product.candidate_area == areas_[a].name) &&
+                   (layout.fixed_area.empty() || layout.fixed_area == areas_[a].name);
+        };
+        const bool only_anchored =
+            std::none_of(products_.begin(), products_.end(),
+                         [&](const Product &product) {
+                             return eligible(product) &&
+                                    product_layouts_.at(product.layout_key()).fixed_area.empty();
+                         });
+        const auto interferes = [](const BlueprintLayout &a, const BlueprintLayout &b)
+        {
+            for (const auto &target : a.needed_climates)
+                for (const auto &zone : b.emitted_climates)
+                    if (target.environment != zone.environment && target.x < zone.x + zone.width &&
+                        zone.x < target.x + target.width && target.y < zone.y + zone.height &&
+                        zone.y < target.y + target.height)
+                        return true;
+            return false;
+        };
+        for (size_t p = 0; p < products_.size(); ++p)
+            if (eligible(products_[p]))
+            {
+                const auto &left = product_layouts_.at(products_[p].layout_key());
+                for (size_t q = p + 1; q < products_.size(); ++q)
+                    if (eligible(products_[q]))
+                    {
+                        const auto &right = product_layouts_.at(products_[q].layout_key());
+                        if (interferes(left, right) || interferes(right, left))
+                            cp_model_.AddLessOrEqual(
+                                factories_in_area_[p][a] + factories_in_area_[q][a], 1);
+                    }
+            }
 
         bool has_top_depot = false;
         int top_x1 = 0, top_x2 = W_a - 1;
@@ -428,20 +512,22 @@ void Solver::declare_area_constraints()
             cp_model_.AddEquality(slot.bx, 0).OnlyEnforceIf(slot.active.Not());
             cp_model_.AddEquality(slot.by, 0).OnlyEnforceIf(slot.active.Not());
 
-            if (!has_top_depot)
-                cp_model_.AddEquality(slot.is_rot[0], 0);
-            if (!has_right_depot)
-                cp_model_.AddEquality(slot.is_rot[90], 0);
-            if (!has_bottom_depot)
-                cp_model_.AddEquality(slot.is_rot[180], 0);
-            if (!has_left_depot)
-                cp_model_.AddEquality(slot.is_rot[270], 0);
-
             LinearExpr bw_expr;
             LinearExpr bh_expr;
             for (size_t p = 0; p < products_.size(); ++p)
             {
-                const auto &layout = product_layouts_.at(products_[p].name);
+                const auto &product = products_[p];
+                const auto &layout = product_layouts_.at(product.layout_key());
+                if (!eligible(product))
+                    cp_model_.AddEquality(slot.is_prod[p], 0);
+                if (!layout.fixed_area.empty())
+                {
+                    cp_model_.AddEquality(slot.bx, layout.area_origin.first)
+                        .OnlyEnforceIf(slot.is_prod[p]);
+                    cp_model_.AddEquality(slot.by, layout.area_origin.second)
+                        .OnlyEnforceIf(slot.is_prod[p]);
+                    cp_model_.AddEquality(slot.is_rot[0], 1).OnlyEnforceIf(slot.is_prod[p]);
+                }
                 int bw0 = layout.bounding_width;
                 int bh0 = layout.bounding_height;
 
@@ -457,6 +543,35 @@ void Solver::declare_area_constraints()
 
                     bw_expr += LinearExpr::Term(is_pr, cur_w);
                     bh_expr += LinearExpr::Term(is_pr, cur_h);
+                    if (!layout.fixed_area.empty() || layout.depot_length == 0)
+                        continue;
+                    if (r == 0 && has_top_depot)
+                    {
+                        cp_model_.AddEquality(slot.by + cur_h, H_a).OnlyEnforceIf(is_pr);
+                        cp_model_.AddGreaterOrEqual(slot.bx, top_x1).OnlyEnforceIf(is_pr);
+                        cp_model_.AddLessOrEqual(slot.bx + cur_w - 1, top_x2).OnlyEnforceIf(is_pr);
+                    }
+                    else if (r == 90 && has_right_depot)
+                    {
+                        cp_model_.AddEquality(slot.bx + cur_w, W_a).OnlyEnforceIf(is_pr);
+                        cp_model_.AddGreaterOrEqual(slot.by, right_y1).OnlyEnforceIf(is_pr);
+                        cp_model_.AddLessOrEqual(slot.by + cur_h - 1, right_y2)
+                            .OnlyEnforceIf(is_pr);
+                    }
+                    else if (r == 180 && has_bottom_depot)
+                    {
+                        cp_model_.AddEquality(slot.by, 0).OnlyEnforceIf(is_pr);
+                        cp_model_.AddGreaterOrEqual(slot.bx, bot_x1).OnlyEnforceIf(is_pr);
+                        cp_model_.AddLessOrEqual(slot.bx + cur_w - 1, bot_x2).OnlyEnforceIf(is_pr);
+                    }
+                    else if (r == 270 && has_left_depot)
+                    {
+                        cp_model_.AddEquality(slot.bx, 0).OnlyEnforceIf(is_pr);
+                        cp_model_.AddGreaterOrEqual(slot.by, left_y1).OnlyEnforceIf(is_pr);
+                        cp_model_.AddLessOrEqual(slot.by + cur_h - 1, left_y2).OnlyEnforceIf(is_pr);
+                    }
+                    else
+                        cp_model_.AddEquality(is_pr, 0);
                 }
             }
             cp_model_.AddEquality(slot.bw, bw_expr);
@@ -464,35 +579,6 @@ void Solver::declare_area_constraints()
 
             cp_model_.AddLessOrEqual(slot.bx + slot.bw, W_a);
             cp_model_.AddLessOrEqual(slot.by + slot.bh, H_a);
-
-            if (has_top_depot)
-            {
-                cp_model_.AddEquality(slot.by + slot.bh, H_a).OnlyEnforceIf(slot.is_rot[0]);
-                cp_model_.AddGreaterOrEqual(slot.bx, top_x1).OnlyEnforceIf(slot.is_rot[0]);
-                cp_model_.AddLessOrEqual(slot.bx + slot.bw - 1, top_x2)
-                    .OnlyEnforceIf(slot.is_rot[0]);
-            }
-            if (has_right_depot)
-            {
-                cp_model_.AddEquality(slot.bx + slot.bw, W_a).OnlyEnforceIf(slot.is_rot[90]);
-                cp_model_.AddGreaterOrEqual(slot.by, right_y1).OnlyEnforceIf(slot.is_rot[90]);
-                cp_model_.AddLessOrEqual(slot.by + slot.bh - 1, right_y2)
-                    .OnlyEnforceIf(slot.is_rot[90]);
-            }
-            if (has_bottom_depot)
-            {
-                cp_model_.AddEquality(slot.by, 0).OnlyEnforceIf(slot.is_rot[180]);
-                cp_model_.AddGreaterOrEqual(slot.bx, bot_x1).OnlyEnforceIf(slot.is_rot[180]);
-                cp_model_.AddLessOrEqual(slot.bx + slot.bw - 1, bot_x2)
-                    .OnlyEnforceIf(slot.is_rot[180]);
-            }
-            if (has_left_depot)
-            {
-                cp_model_.AddEquality(slot.bx, 0).OnlyEnforceIf(slot.is_rot[270]);
-                cp_model_.AddGreaterOrEqual(slot.by, left_y1).OnlyEnforceIf(slot.is_rot[270]);
-                cp_model_.AddLessOrEqual(slot.by + slot.bh - 1, left_y2)
-                    .OnlyEnforceIf(slot.is_rot[270]);
-            }
 
             IntVar end_x = cp_model_.NewIntVar(Domain(0, W_a));
             IntVar end_y = cp_model_.NewIntVar(Domain(0, H_a));
@@ -509,10 +595,39 @@ void Solver::declare_area_constraints()
             }
         }
 
-        NoOverlap2DConstraint no_overlap = cp_model_.AddNoOverlap2D();
-        for (size_t i = 0; i < x_intervals.size(); ++i)
+        if (only_anchored)
         {
-            no_overlap.AddRectangle(x_intervals[i], y_intervals[i]);
+            std::map<std::pair<int, int>, std::vector<IntVar>> tile_users;
+            for (size_t p = 0; p < products_.size(); ++p)
+            {
+                const auto &product = products_[p];
+                if (!eligible(product))
+                    continue;
+                const auto &layout = product_layouts_.at(product.layout_key());
+                std::set<std::pair<int, int>> occupied;
+                for (const auto &entity : layout.entities)
+                    for (int x = entity.x; x < entity.x + entity.width; ++x)
+                        for (int y = entity.y; y < entity.y + entity.height; ++y)
+                            occupied.emplace(x, y);
+                for (const auto &[tile, directions] : layout.conveyor_cells)
+                    occupied.insert(tile);
+                for (const auto &[x, y] : occupied)
+                    tile_users[{x + layout.area_origin.first, y + layout.area_origin.second}]
+                        .push_back(factories_in_area_[p][a]);
+            }
+            for (const auto &[tile, users] : tile_users)
+                if (users.size() > 1)
+                    cp_model_.AddLessOrEqual(LinearExpr::Sum(users), 1);
+        }
+        else
+        {
+            NoOverlap2DConstraint no_overlap = cp_model_.AddNoOverlap2D();
+            for (size_t i = 0; i < x_intervals.size(); ++i)
+                no_overlap.AddRectangle(x_intervals[i], y_intervals[i]);
+            for (const auto &piece : areas_[a].depot_bus)
+                no_overlap.AddRectangle(
+                    cp_model_.NewFixedSizeIntervalVar(LinearExpr(piece.x), piece.width),
+                    cp_model_.NewFixedSizeIntervalVar(LinearExpr(piece.y), piece.height));
         }
 
         for (size_t p = 0; p < products_.size(); ++p)

@@ -414,7 +414,7 @@ void production_flows(const Dataset &data)
     Recipe fast;
     fast.name = "parallel_belt_fixture";
     fast.time = 1;
-    fast.products.push_back({"parallel_output", 1});
+    fast.products.push_back({"parallel_output", 1, MaterialPhase::Solid, {}});
     ProductionPlan parallel_plan;
     parallel_plan.target_rate = 1;
     parallel_plan.steps.push_back(
@@ -704,7 +704,7 @@ void shared_layout(const Dataset &data)
     Product citrome;
     citrome.name = "canned_citrome_c";
     BlueprintLayout buck_layout, citrome_layout;
-    check(solver.solve(buck, buck_layout) && solver.solve(citrome, citrome_layout),
+    check(solver.solve(buck, buck_layout) && solver.solve(citrome, citrome_layout, true),
           "Both capsule variants must have a routed blueprint");
     check(buck_layout.conveyor_paths == citrome_layout.conveyor_paths &&
               buck_layout.conveyor_cells == citrome_layout.conveyor_cells &&
@@ -810,6 +810,40 @@ void regional_model()
     self_powered.set_blueprint_layouts({{"battery", rectangle}});
     check(self_powered.solve() && self_powered.objective_value() == 1,
           "Fuel production must include both the unit sold and the unit burned");
+
+    Product anchor;
+    anchor.candidate_area = area.name;
+    anchor.name = "anchored_a";
+    anchor.value = 1;
+    anchor.production_time = 60;
+    Product sibling = anchor;
+    sibling.name = "anchored_b";
+    const std::vector<Product> anchored{anchor, sibling};
+    BlueprintLayout corner_a, corner_b;
+    corner_a.fixed_area = corner_b.fixed_area = area.name;
+    corner_a.bounding_width = corner_b.bounding_width = 8;
+    corner_a.bounding_height = corner_b.bounding_height = 8;
+    const auto occupy = [](int x, int y)
+    {
+        PlacedBlueprintEntity entity;
+        entity.x = x;
+        entity.y = y;
+        entity.width = entity.height = 1;
+        return entity;
+    };
+    corner_a.entities = {occupy(0, 0), occupy(7, 7)};
+    corner_b.entities = {occupy(0, 7), occupy(7, 0)};
+    Solver tile_packing(anchored, resources, areas, fuels, powers, region);
+    tile_packing.set_render_layouts(false);
+    tile_packing.set_blueprint_layouts(
+        {{anchor.layout_key(), corner_a}, {sibling.layout_key(), corner_b}});
+    check(tile_packing.solve() && tile_packing.objective_value() == 2,
+          "Anchored layouts can share a bounding box when their occupied tiles are disjoint");
+    corner_b.entities.push_back(occupy(0, 0));
+    tile_packing.set_blueprint_layouts(
+        {{anchor.layout_key(), corner_a}, {sibling.layout_key(), corner_b}});
+    check(tile_packing.solve() && tile_packing.objective_value() == 1,
+          "Anchored layouts cannot share an occupied extraction or route tile");
 }
 void blueprint(const Dataset &fixture)
 {
@@ -853,6 +887,188 @@ void blueprint(const Dataset &fixture)
               "Conveyor outside blueprint");
     }
 }
+
+void wuling(const std::filesystem::path &root)
+{
+    BlueprintLayout crossing;
+    const auto terminal = [](int x, int y, bool input, TransportMedium type, int dx, int dy)
+    {
+        PlacedBlueprintEntity entity;
+        entity.x = x;
+        entity.y = y;
+        entity.width = entity.height = 1;
+        entity.ports.push_back({x, y, input, dx, dy, type, {}});
+        return entity;
+    };
+    crossing.entities = {terminal(0, 3, false, TransportMedium::Solid, 1, 0),
+                         terminal(6, 3, true, TransportMedium::Solid, -1, 0),
+                         terminal(3, 0, false, TransportMedium::Pipe, 0, 1),
+                         terminal(3, 6, true, TransportMedium::Pipe, 0, -1)};
+    std::vector<StreamLink> crossing_links{{0, 0, 1, 0, "ore", 0.5},
+                                           {2, 0, 3, 0, "water", 0.5, {}, MaterialPhase::Liquid}};
+    check(!route_conveyors(crossing, crossing_links, 7, 7).feasible,
+          "Mixed crossings require an explicit area setting");
+    check(route_conveyors(crossing, crossing_links, 7, 7,
+                          std::chrono::steady_clock::time_point::max(), true, true)
+                  .feasible &&
+              crossing.pipe_belt_crossings.size() == 1,
+          "A supported elevated pipe can cross a straight belt");
+
+    auto data = Dataset::load(root / "tests/fixtures/wuling");
+    auto &area = data.areas.front();
+    check(data.products.size() == 12 && area.depot_bus.size() == 3,
+          "Load Wuling offers and connected Depot Bus pieces");
+    auto disconnected = area;
+    disconnected.depot_bus[1].x = 25;
+    rejects([&] { validate_area_installations(disconnected, data.facilities); }, "disconnected");
+
+    BlueprintOptions options;
+    options.local_area = &area;
+    options.automatic_recipes = true;
+    BlueprintSolver solver(data.facilities, data.region.resources, data.areas, options);
+    Product copper;
+    copper.name = "item_copper_cmpt";
+    copper.candidate_area = area.name;
+    copper.value = 1;
+    BlueprintLayout layout;
+    check(solver.solve(copper, layout) && layout.output_per_minute == 30,
+          "Route full-speed Cuprium Part with water and sewage");
+    check(layout.fixed_area == area.name &&
+              std::count(layout.path_phases.begin(), layout.path_phases.end(),
+                         MaterialPhase::Liquid) == 2,
+          "Wuling layout must include both physical liquid routes");
+    const auto pump = std::find_if(layout.entities.begin(), layout.entities.end(),
+                                   [](const auto &entity) { return entity.type == "pump_1"; });
+    check(pump != layout.entities.end() && pump->x + layout.area_origin.first == 1 &&
+              pump->y + layout.area_origin.second == 15,
+          "The routed fluid pump must use the configured extraction tile");
+    check(copper.factory_facilities.at("liquid_cleaner_1") == 1,
+          "The refinery must route its co-product to a treatment facility");
+    rejects([&] { enkad_blueprint(layout, data.facilities); }, "does not support pipes");
+    auto depot_output = area;
+    depot_output.output_to_depot_bus = true;
+    auto depot_options = options;
+    depot_options.local_area = &depot_output;
+    BlueprintSolver depot_solver(data.facilities, data.region.resources, data.areas, depot_options);
+    auto depot_product = copper;
+    BlueprintLayout depot_layout;
+    check(depot_solver.solve(depot_product, depot_layout) &&
+              depot_product.factory_facilities.count("loader_1") &&
+              depot_layout.depot_length > layout.depot_length,
+          "A depot-loader output occupies an additional physical attachment");
+
+    std::map<std::string, double> powers;
+    for (const auto &facility : data.facilities)
+        powers[facility.name] = facility.power;
+    const std::vector<Product> candidates{copper};
+    Solver regional(candidates, data.region.resources, data.areas, data.fuels, powers, data.region);
+    regional.set_render_layouts(false);
+    regional.set_blueprint_layouts({{copper.layout_key(), layout}});
+    check(regional.solve() && regional.objective_value() > 0 &&
+              regional.objective_value() <= layout.output_per_minute,
+          "A fixed extraction site cannot be packed twice");
+
+    Product delivery = copper;
+    delivery.rebuilding = true;
+    delivery.value = 0;
+    BlueprintLayout rebuilding;
+    check(solver.solve(delivery, rebuilding) &&
+              delivery.factory_facilities.at("wonder_supply_port_1") == 1,
+          "Route a dedicated rebuilding delivery to its configured port");
+
+    auto select_final = [&](const std::string &item, const std::string &id)
+    {
+        auto selected = data.facilities;
+        for (auto &facility : selected)
+            facility.recipes.erase(std::remove_if(facility.recipes.begin(), facility.recipes.end(),
+                                                  [&](const Recipe &recipe)
+                                                  {
+                                                      return recipe.id != id &&
+                                                             std::any_of(
+                                                                 recipe.products.begin(),
+                                                                 recipe.products.end(),
+                                                                 [&](const RecipeProduct &output)
+                                                                 { return output.item == item; });
+                                                  }),
+                                   facility.recipes.end());
+        return selected;
+    };
+    const std::string xiranite = "item_xiranite_powder";
+    auto stable = select_final(xiranite, "xiranite_oven_xiranite_powder_2");
+    RecipeGraph stable_graph(stable, data.region.resources, true, &area);
+    const auto plan = stable_graph.plan_target(xiranite);
+    check(std::abs(plan.external_rates.at("item_gas_inert") - 0.1) < 1e-8,
+          "The Stable environment needs a continuous gas feed");
+    const auto network = build_factory_network(
+        plan, xiranite, stable_graph.facility("protocol_stash"), stable_graph.facility("unloader"));
+    const auto &forge = network.entities.at(network.root_entity_id);
+    check(forge.climate_provider >= 0 &&
+              network.entities[forge.climate_provider].type == "vaporizer_1",
+          "Climate-dependent recipes must reach a physically placed disperser");
+    BlueprintSolver climate_solver(stable, data.region.resources, data.areas, options);
+    Product stable_product;
+    stable_product.name = xiranite;
+    BlueprintLayout climate_layout;
+    check(climate_solver.solve(stable_product, climate_layout) &&
+              climate_layout.output_per_minute == 30,
+          "Physically route full-speed Stable Xiranite");
+    const auto disperser =
+        std::find_if(climate_layout.entities.begin(), climate_layout.entities.end(),
+                     [](const auto &entity) { return entity.type == "vaporizer_1"; });
+    const auto placed_forge =
+        std::find_if(climate_layout.entities.begin(), climate_layout.entities.end(),
+                     [](const auto &entity) { return entity.type == "xiranite_oven_1"; });
+    check(disperser != climate_layout.entities.end() &&
+              placed_forge != climate_layout.entities.end() &&
+              placed_forge->x >= disperser->x - 7 && placed_forge->y >= disperser->y - 7 &&
+              placed_forge->x + placed_forge->width <= disperser->x + disperser->width + 7 &&
+              placed_forge->y + placed_forge->height <= disperser->y + disperser->height + 7,
+          "The entire forge footprint is inside the configured gaseous environment");
+    auto no_climate = area;
+    no_climate.climates.clear();
+    RecipeGraph unavailable(stable, data.region.resources, true, &no_climate);
+    rejects([&] { unavailable.plan_target(xiranite); }, "missing climate configuration");
+
+    auto activated = select_final(xiranite, "liquid_transmuter_2_solid_xiranite_powder_1");
+    RecipeGraph gas_graph(activated, data.region.resources, true, &area);
+    const auto activation_plan = gas_graph.plan_target(xiranite);
+    check(std::abs(activation_plan.external_rates.at("item_gas_xiranite") - 0.6) < 1e-8,
+          "Activation must add six gas per minute to ordinary recipe consumption");
+    const auto gas_network =
+        build_factory_network(activation_plan, xiranite, gas_graph.facility("protocol_stash"),
+                              gas_graph.facility("unloader"));
+    const auto &transmuter = gas_network.entities.at(gas_network.root_entity_id);
+    check(std::any_of(gas_network.streams.begin(), gas_network.streams.end(),
+                      [&](const StreamLink &link)
+                      {
+                          return link.dst_entity == transmuter.id &&
+                                 link.dst_port_idx == transmuter.activation_port &&
+                                 link.phase == MaterialPhase::Gas &&
+                                 std::abs(link.rate - 0.1) < 1e-8;
+                      }),
+          "Activation uses its dedicated gas port and exact feed");
+    auto limited = area;
+    limited.sources.erase(limited.sources.begin() + 2);
+    RecipeGraph insufficient(activated, data.region.resources, true, &limited);
+    rejects([&] { insufficient.plan_target(xiranite); }, "Infeasible production balance");
+
+    RecipeGraph crops(data.facilities, data.region.resources, true, &area);
+    const auto crop_plan = crops.plan_target("jincao");
+    check(std::abs(crop_plan.target_rate - 0.5) < 1e-8 &&
+              std::abs(crop_plan.external_rates.at("item_liquid_water") - 0.5) < 1e-8 &&
+              !crop_plan.startup_stock.empty(),
+          "Hydroponic Jincao provides net output after recycling one flower per seed");
+
+    const auto array_plan = crops.plan_target("item_copper_enr_heng");
+    const auto array_network =
+        build_factory_network(array_plan, "item_copper_enr_heng", crops.facility("protocol_stash"),
+                              crops.facility("unloader"));
+    check(array_network.entities[array_network.root_entity_id].type == "array_belt" &&
+              std::count_if(array_network.entities.begin(), array_network.entities.end(),
+                            [](const auto &entity) { return entity.projection != nullptr; }) == 2,
+          "An Equilibrium Array uses overlapping L and T projections on a belt tile");
+}
+
 int main(int argc, char **argv)
 {
     try
@@ -893,6 +1109,7 @@ int main(int argc, char **argv)
         powered_blueprint(imported);
         regional_model();
         blueprint(fixture);
+        wuling(root);
         std::cout << "Planner regression checks passed\n";
         return 0;
     }

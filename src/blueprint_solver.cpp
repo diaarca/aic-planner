@@ -126,13 +126,17 @@ void set_entity_labels(PlacedBlueprintEntity &placed, const FactoryEntity &entit
     placed.seed_loop = entity.seed_loop;
     placed.mineral = entity.item_produced;
     placed.recipe_name.clear();
+    placed.operating_mode = entity.projection ? entity.projection->mode : "";
+    if (entity.pipe_limit_per_minute > 0)
+        placed.operating_mode =
+            "flow limit " + std::to_string(std::llround(entity.pipe_limit_per_minute)) + "/min";
     placed.utilization = 0;
     if (entity.recipe)
     {
         placed.recipe_name = entity.recipe->name;
         const auto &output = entity.recipe->products.front();
         placed.utilization =
-            entity.output_rates.at(output.item) / output.amount * entity.recipe->time;
+            entity.output_rates.at(output.item) / output.amount * entity.cycle_seconds;
     }
 }
 
@@ -169,16 +173,22 @@ void relabel_layout(BlueprintLayout &layout, const FactoryNetwork &network)
     }
 }
 
-std::map<int, std::vector<int>> dependency_rows(const FactoryNetwork &network)
+std::map<int, std::vector<int>> dependency_rows(const FactoryNetwork &network, bool area_bound)
 {
     const auto &entities = network.entities;
     const int count = entities.size();
     std::vector<std::vector<int>> successors(count);
     std::vector<int> incoming(count), depth(count, -1), latest(count, -1);
     auto in_rows = [&](int id)
-    { return entities[id].seed_loop.empty() && id != network.stash_entity_id; };
+    {
+        const auto &entity = entities[id];
+        return entity.seed_loop.empty() && id != network.stash_entity_id &&
+               (!area_bound ||
+                (!entity.site && !entity.array_field && entity.type != "seed_picking_unit"));
+    };
     for (const auto &stream : network.streams)
-        if (in_rows(stream.src_entity) && in_rows(stream.dst_entity))
+        if (in_rows(stream.src_entity) && in_rows(stream.dst_entity) &&
+            (!area_bound || stream.phase == MaterialPhase::Solid))
         {
             successors[stream.src_entity].push_back(stream.dst_entity);
             ++incoming[stream.dst_entity];
@@ -238,7 +248,8 @@ std::map<int, std::vector<int>> dependency_rows(const FactoryNetwork &network)
 BlueprintSolver::BlueprintSolver(const std::vector<Facility> &facilities,
                                  const std::vector<Mineral> &minerals,
                                  const std::vector<Area> &areas, BlueprintOptions options)
-    : graph_(facilities, minerals, options.automatic_recipes), options_(options), areas_(areas)
+    : graph_(facilities, minerals, options.automatic_recipes, options.local_area),
+      options_(options), areas_(areas)
 {
     if (!std::isfinite(options.placement_seconds) || options.placement_seconds < 0 ||
         !std::isfinite(options.compact_seconds) || options.compact_seconds < 0 ||
@@ -246,10 +257,13 @@ BlueprintSolver::BlueprintSolver(const std::vector<Facility> &facilities,
         (options.blueprint_size &&
          (options.blueprint_size->first <= 0 || options.blueprint_size->second <= 0)))
         throw std::invalid_argument("Invalid blueprint search options");
+    const auto id = options.local_area && !options.local_area->power_pylon.empty()
+                        ? options.local_area->power_pylon
+                        : "power_diffuser_1";
     const auto pylon = std::find_if(facilities.begin(), facilities.end(),
-                                    [](const Facility &facility)
+                                    [&](const Facility &facility)
                                     {
-                                        return facility.name == "power_diffuser_1" &&
+                                        return (facility.id == id || facility.name == id) &&
                                                facility.power_range_extension.has_value();
                                     });
     if (pylon != facilities.end())
@@ -268,14 +282,54 @@ struct BlueprintSolver::PlacementProblem
     const std::map<int, int> &module_pylons;
     int grid_w, grid_h;
     bool complex_network, standalone_plant;
+    bool anchored;
 };
 
-bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
+bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout, bool reuse_only)
+{
+    if (!options_.local_area)
+        return solve_plan(product, layout, graph_.plan_target(product.name), reuse_only);
+    if (reuse_only)
+        return false;
+    std::set<const Recipe *> excluded;
+    std::string failure;
+    for (int attempt = 0; attempt < 3; ++attempt)
+    {
+        ProductionPlan plan;
+        try
+        {
+            plan = graph_.plan_target(product.name, excluded);
+        }
+        catch (const std::invalid_argument &)
+        {
+            if (excluded.empty())
+                throw;
+            break;
+        }
+        try
+        {
+            if (solve_plan(product, layout, plan))
+                return true;
+        }
+        catch (const std::invalid_argument &error)
+        {
+            failure = error.what();
+        }
+        if (!plan.final_recipe)
+            break;
+        excluded.insert(plan.final_recipe);
+    }
+    if (!failure.empty())
+        throw std::invalid_argument(failure);
+    return false;
+}
+
+bool BlueprintSolver::solve_plan(Product &product, BlueprintLayout &layout,
+                                 const ProductionPlan &plan, bool reuse_only)
 {
     layout = BlueprintLayout{};
     status_ = BlueprintStatus::Infeasible;
     const auto &blueprint_name = product.name;
-    const auto plan = graph_.plan_target(product.name);
     layout.output_per_minute = plan.target_rate * 60;
     layout.startup_items = plan.startup_items;
     layout.startup_stock = plan.startup_stock;
@@ -284,34 +338,46 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
     product.factory_facilities.clear();
     for (const auto &[item, rate] : plan.external_rates)
         product.mineral_consumption[item] = rate / plan.target_rate;
-    for (const auto &step : plan.steps)
-        product.factory_facilities[step.facility->name] += step.instances;
-    auto network = build_factory_network(plan, product.name, graph_.facility("protocol_stash"),
-                                         graph_.facility("unloader"));
+    if (product.rebuilding && (!plan.area || !plan.area->rebuilding_port))
+        throw std::invalid_argument("Missing areas.json rebuilding_port for " +
+                                    (plan.area ? plan.area->name : blueprint_name));
+    const auto *delivery = product.rebuilding ? &*plan.area->rebuilding_port : nullptr;
+    const bool use_depot_loader = plan.area && plan.area->output_to_depot_bus && !delivery;
+    auto network = build_factory_network(
+        plan, product.name,
+        graph_.facility(delivery ? delivery->facility
+                                 : (use_depot_loader ? "loader_1" : "protocol_stash")),
+        graph_.facility("unloader"), delivery);
     const auto module_pylons = add_plant_pylons(network, graph_);
     const auto &entities = network.entities;
-    for (const auto &[picker, pole] : module_pylons)
-        ++product.factory_facilities[entities[pole].type];
+    for (const auto &entity : entities)
+        if (!entity.array_field)
+            ++product.factory_facilities[entity.type];
+    const bool anchored =
+        plan.area &&
+        (plan.disperser || plan.area->rebuilding_port || !plan.area->depot_bus.empty() ||
+         std::any_of(entities.begin(), entities.end(),
+                     [](const FactoryEntity &entity) { return entity.site; }));
     const bool standalone_plant =
         module_pylons.size() == 1 && plan.steps.size() == 3 && plan.external_rates.empty() &&
         entities[entities[module_pylons.begin()->first].loop_harvest].item_produced == product.name;
-    product.factory_facilities["protocol_stash"] = 1;
-    product.factory_facilities["unloader"] = network.total_unloaders;
-    for (const auto &item : plan.startup_items)
-        log(LogLevel::Info, blueprint_name, ": initialize recycling with ",
-            plan.startup_stock.at(item), " x ", item, " in the seed-picking units (once)");
+    if (!reuse_only)
+        for (const auto &item : plan.startup_items)
+            log(LogLevel::Info, blueprint_name, ": initialize recycling with ",
+                plan.startup_stock.at(item), " x ", item, " (once)");
 
     // Determine grid bounds from area
     int grid_w = 30;
     int grid_h = 30;
-    if (!areas_.empty())
+    const auto *area = plan.area ? plan.area : (areas_.empty() ? nullptr : &areas_.front());
+    if (area)
     {
-        if (areas_[0].pac_width > 0)
-            grid_w = static_cast<int>(areas_[0].pac_width);
-        if (areas_[0].pac_height > 0)
-            grid_h = static_cast<int>(areas_[0].pac_height);
+        if (area->pac_width > 0)
+            grid_w = static_cast<int>(area->pac_width);
+        if (area->pac_height > 0)
+            grid_h = static_cast<int>(area->pac_height);
     }
-    if (options_.blueprint_size)
+    if (options_.blueprint_size && !anchored)
     {
         grid_w = std::min(grid_w, options_.blueprint_size->first);
         grid_h = std::min(grid_h, options_.blueprint_size->second);
@@ -337,9 +403,11 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         status_ = BlueprintStatus::Success;
         return true;
     };
-    auto signature =
-        layout_signature(network, graph_, grid_w, grid_h, complex_network, standalone_plant);
-    if (const auto found = routed_layouts_.find(signature.key); found != routed_layouts_.end())
+    auto signature = plan.area ? LayoutSignature{}
+                               : layout_signature(network, graph_, grid_w, grid_h, complex_network,
+                                                  standalone_plant);
+    if (const auto found = routed_layouts_.find(signature.key);
+        !plan.area && found != routed_layouts_.end())
     {
         const auto &cached = found->second;
         log(LogLevel::Info, blueprint_name, ": reusing routed layout from ",
@@ -358,10 +426,13 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
         relabel_layout(layout, network);
         return finish();
     }
+    if (reuse_only)
+        return false;
 
-    const PlacementProblem problem{
-        blueprint_name, plan, module_pylons, grid_w, grid_h, complex_network, standalone_plant};
-    const auto stages = dependency_rows(network);
+    const PlacementProblem problem{blueprint_name,   plan,    module_pylons,
+                                   grid_w,           grid_h,  complex_network,
+                                   standalone_plant, anchored};
+    const auto stages = dependency_rows(network, anchored);
     bool solved = false;
     if (!stages.empty() && options_.placement_seconds > 0)
     {
@@ -374,9 +445,10 @@ bool BlueprintSolver::solve(Product &product, BlueprintLayout &layout)
     }
     if (!solved && !solve_placement(problem, network, {}, layout))
         return false;
-    routed_layouts_.emplace(
-        std::move(signature.key),
-        RoutedLayout{layout, std::move(signature.entity_order), std::move(signature.stream_order)});
+    if (!plan.area)
+        routed_layouts_.emplace(std::move(signature.key),
+                                RoutedLayout{layout, std::move(signature.entity_order),
+                                             std::move(signature.stream_order)});
     return finish();
 }
 
@@ -395,6 +467,23 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
     auto &streams = network.streams;
     const int root_entity_id = network.root_entity_id, stash_entity_id = network.stash_entity_id;
     const int total_unloaders = network.total_unloaders, unloader_width = network.unloader_width;
+    const bool local_bus = plan.area && !plan.area->depot_bus.empty();
+    const bool loader = plan.area && plan.area->output_to_depot_bus && !network.delivery;
+    auto obstacles = plan.area ? plan.area->depot_bus : std::vector<DepotBusPiece>{};
+    if (plan.area && plan.area->rebuilding_port && !network.delivery)
+        obstacles.push_back(*plan.area->rebuilding_port);
+    std::set<std::pair<int, int>> fixed_tiles;
+    for (const auto &piece : obstacles)
+        for (int x = piece.x; x < piece.x + piece.width; ++x)
+            for (int y = piece.y; y < piece.y + piece.height; ++y)
+                fixed_tiles.emplace(x, y);
+    const auto attachment_points = local_bus ? depot_attachments(*plan.area, unloader_width)
+                                             : std::vector<std::tuple<int, int, int>>{};
+    const auto loader_points = loader
+                                   ? depot_attachments(*plan.area, entities[stash_entity_id].base_w)
+                                   : std::vector<std::tuple<int, int, int>>{};
+    if (total_unloaders && plan.area && !local_bus)
+        throw std::invalid_argument("No Depot Bus configured in " + plan.area->name);
 
     // Build CP-SAT Model
     CpModelBuilder model;
@@ -419,7 +508,7 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
 
         // Stable port banks leave predictable routing lanes in complex networks.
         // Ground-only routing can vary orientations outside fixed plant modules.
-        if (complex_network && !entities[i].is_unloader)
+        if (complex_network && !entities[i].is_unloader && !problem.anchored)
         {
             const bool upright =
                 entities[i].loop_role == SeedLoopRole::Picker && entities[i].loop_harvest >= 0;
@@ -442,16 +531,44 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
         for (const auto &bv : b)
             rot_sum += bv;
         model.AddEquality(rot_sum, 1);
+        if (const auto *site = entities[i].site)
+        {
+            model.AddEquality(posX[i], site->x);
+            model.AddEquality(posY[i], site->y);
+            model.AddEquality(b[site->rotation / 90], 1);
+        }
+        if (i == stash_entity_id && network.delivery)
+        {
+            model.AddEquality(posX[i], network.delivery->x);
+            model.AddEquality(posY[i], network.delivery->y);
+            model.AddEquality(b[network.delivery->rotation / 90], 1);
+        }
+        if (const auto *field = entities[i].array_field)
+            model.AddEquality(b[field->belt_rotation / 90], 1);
+        if (const auto *projector = entities[i].projection)
+            model.AddEquality(b[projector->rotation / 90], 1);
 
         int bw = entities[i].base_w;
         int bh = entities[i].base_h;
 
         // Unloaders attach to top depot: line Y = grid_h - 1, rotation 0
-        if (entities[i].is_unloader)
+        if (entities[i].is_unloader && !local_bus)
         {
             model.AddEquality(b[0], 1);
             model.AddEquality(posY[i], grid_h - 1);
             model.AddLessOrEqual(posX[i], grid_w - bw);
+        }
+        if ((entities[i].is_unloader && local_bus) || (i == stash_entity_id && loader))
+        {
+            IntVar rotation = model.NewIntVar(Domain(0, 3));
+            LinearExpr value;
+            for (int r = 0; r < 4; ++r)
+                value += LinearExpr::Term(b[r], r);
+            model.AddEquality(rotation, value);
+            auto allowed = model.AddAllowedAssignments({posX[i], posY[i], rotation});
+            for (const auto &[x, y, r] :
+                 entities[i].is_unloader ? attachment_points : loader_points)
+                allowed.AddTuple({x, y, r});
         }
 
         IntVar w = model.NewIntVar(Domain(std::min(bw, bh), std::max(bw, bh)));
@@ -467,7 +584,8 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
 
         effW.push_back(w);
         effH.push_back(h);
-        if (complex_network && !entities[i].is_unloader && !standalone_plant && !staged)
+        if (complex_network && !entities[i].is_unloader && !standalone_plant && !staged &&
+            !problem.anchored)
         {
             model.AddLessOrEqual(posX[i] + w, grid_w - 2);
             model.AddLessOrEqual(posY[i] + h, grid_h - 4);
@@ -490,7 +608,7 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
             unloader_indices.push_back(i);
     }
     int K = static_cast<int>(unloader_indices.size());
-    if (K > 0)
+    if (K > 0 && !local_bus)
     {
         LinearExpr depot_offset;
         if (staged)
@@ -516,8 +634,53 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
     {
         no_overlap.AddRectangle(intX[i], intY[i]);
     }
+    for (const auto &entity : entities)
+    {
+        if (entity.climate)
+        {
+            const int target = entity.id, provider = entity.climate_provider;
+            model.AddGreaterOrEqual(posX[target], posX[provider] - entity.climate->range_x);
+            model.AddGreaterOrEqual(posY[target], posY[provider] - entity.climate->range_y);
+            model.AddLessOrEqual(posX[target] + effW[target],
+                                 posX[provider] + effW[provider] + entity.climate->range_x);
+            model.AddLessOrEqual(posY[target] + effH[target],
+                                 posY[provider] + effH[provider] + entity.climate->range_y);
+            for (const auto &other : entities)
+                if (other.climate && other.climate->environment != entity.climate->environment)
+                {
+                    const int source = other.climate_provider;
+                    const auto left = model.NewBoolVar(), right = model.NewBoolVar();
+                    const auto below = model.NewBoolVar(), above = model.NewBoolVar();
+                    model
+                        .AddLessOrEqual(posX[target] + effW[target],
+                                        posX[source] - other.climate->range_x)
+                        .OnlyEnforceIf(left);
+                    model
+                        .AddGreaterOrEqual(posX[target],
+                                           posX[source] + effW[source] + other.climate->range_x)
+                        .OnlyEnforceIf(right);
+                    model
+                        .AddLessOrEqual(posY[target] + effH[target],
+                                        posY[source] - other.climate->range_y)
+                        .OnlyEnforceIf(below);
+                    model
+                        .AddGreaterOrEqual(posY[target],
+                                           posY[source] + effH[source] + other.climate->range_y)
+                        .OnlyEnforceIf(above);
+                    model.AddBoolOr({left, right, below, above});
+                }
+        }
+        if (const auto *projector = entity.projection)
+        {
+            model.AddEquality(posX[entity.id], posX[entity.projection_target] + projector->dx);
+            model.AddEquality(posY[entity.id], posY[entity.projection_target] + projector->dy);
+        }
+    }
+    for (const auto &piece : obstacles)
+        no_overlap.AddRectangle(model.NewFixedSizeIntervalVar(LinearExpr(piece.x), piece.width),
+                                model.NewFixedSizeIntervalVar(LinearExpr(piece.y), piece.height));
 
-    if (complex_network && !staged)
+    if (complex_network && !staged && !problem.anchored)
         for (int i = 0; i < N; ++i)
             for (int j = i + 1; j < N; ++j)
             {
@@ -558,6 +721,10 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
             {
                 const int harvest = entity.loop_harvest;
                 const int pole = module_pylons.at(entity.id);
+                model.AddEquality(rotB[entity.id][0], 1);
+                model.AddEquality(rotB[partner][2], 1);
+                model.AddEquality(rotB[harvest][2], 1);
+                model.AddEquality(rotB[pole][0], 1);
                 model.AddEquality(posX[entity.id], posX[partner] + 5);
                 model.AddEquality(posX[harvest], posX[partner] + 10);
                 model.AddEquality(posY[harvest], posY[partner]);
@@ -583,6 +750,7 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
                 }
                 if (standalone_plant)
                 {
+                    model.AddEquality(rotB[stash_entity_id][3], 1);
                     model.AddEquality(posX[partner], 0);
                     model.AddEquality(posY[partner], 3);
                     model.AddEquality(posX[stash_entity_id], posX[partner] + 6);
@@ -615,7 +783,7 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
         }
     }
 
-    if (!staged && (!complex_network || options_.allow_overpasses) &&
+    if (!problem.anchored && !staged && (!complex_network || options_.allow_overpasses) &&
         !primary_consumer_ids.empty() && primary_total_w <= grid_w)
     {
         IntVar tier1_y = model.NewIntVar(Domain(0, grid_h - 1)).WithName("tier1_y");
@@ -640,12 +808,18 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
     {
         std::vector<int> projected_x(N, -1);
         const auto *previous = &stages.at(0);
+        if (local_bus)
+            for (const int id : *previous)
+            {
+                model.AddEquality(posY[id], posY[previous->front()]);
+                model.AddEquality(rotB[id][0], 1);
+            }
         for (const auto &[stage, row] : stages)
         {
             if (stage == 0)
                 continue;
             // Wide rows need room for lateral movement between their port banks.
-            const int gap = previous->size() >= 8 || row.size() >= 8 ? 4 : 1;
+            const int gap = previous->size() >= 8 || row.size() >= 8 ? 4 : problem.anchored ? 2 : 1;
             for (const int id : row)
             {
                 model.AddEquality(posY[id], posY[row.front()]);
@@ -702,7 +876,8 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
     }
 
     // Protocol stash is at or below root facility
-    model.AddLessOrEqual(posY[stash_entity_id], posY[root_entity_id]);
+    if (!problem.anchored)
+        model.AddLessOrEqual(posY[stash_entity_id], posY[root_entity_id]);
 
     // Port Access Tiles & Clearance
     struct PortAccessVar
@@ -756,6 +931,16 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
                 IntVar ay = model.NewIntVar(Domain(0, grid_h - 1));
                 model.AddEquality(ax, posX[i] + px + fx);
                 model.AddEquality(ay, posY[i] + py + fy);
+                for (const auto &piece : obstacles)
+                {
+                    const auto left = model.NewBoolVar(), right = model.NewBoolVar();
+                    const auto below = model.NewBoolVar(), above = model.NewBoolVar();
+                    model.AddLessThan(ax, piece.x).OnlyEnforceIf(left);
+                    model.AddGreaterOrEqual(ax, piece.x + piece.width).OnlyEnforceIf(right);
+                    model.AddLessThan(ay, piece.y).OnlyEnforceIf(below);
+                    model.AddGreaterOrEqual(ay, piece.y + piece.height).OnlyEnforceIf(above);
+                    model.AddBoolOr({left, right, below, above});
+                }
 
                 // Port access cell must NOT be covered by any other entity j !=
                 // i
@@ -837,10 +1022,15 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
     int max_dim =
         std::min(grid_w, std::max(total_unloaders * unloader_width + 8,
                                   static_cast<int>(std::ceil(std::sqrt(total_fac_area) * 2.3))));
-    if (!complex_network && max_dim < grid_w)
+    if (!complex_network && !problem.anchored && max_dim < grid_w)
     {
         model.AddLessOrEqual(bbox_w, max_dim);
         model.AddLessOrEqual(bbox_h, max_dim);
+    }
+    if (problem.anchored && options_.blueprint_size)
+    {
+        model.AddLessOrEqual(bbox_w, options_.blueprint_size->first);
+        model.AddLessOrEqual(bbox_h, options_.blueprint_size->second);
     }
 
     // Minimize Manhattan conveyor distances as regularization
@@ -902,7 +1092,7 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
     // Objective: prioritize compact bounding box and wirelength
     model.Minimize(bbox_w * 100 + bbox_h * 100 + stream_dist * (staged ? 25 : 5));
 
-    if (complex_network && !standalone_plant && !staged)
+    if (complex_network && !standalone_plant && !staged && !problem.anchored)
     {
         // Feed CP-SAT a spacious shelf layout ordered by material dependency.
         // It remains a hint: all placement and access constraints are still checked.
@@ -1021,11 +1211,15 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
     }
 
     SatParameters params;
-    const double placement_limit = complex_network && options_.placement_seconds > 0
-                                       ? std::max(options_.placement_seconds, 6.0)
-                                       : options_.placement_seconds;
+    const double placement_limit =
+        options_.placement_seconds <= 0
+            ? 0
+            : (problem.anchored
+                   ? std::max(options_.placement_seconds, std::clamp(N * 0.5, 10.0, 30.0))
+                   : (complex_network ? std::max(options_.placement_seconds, 6.0)
+                                      : options_.placement_seconds));
     params.set_max_time_in_seconds(placement_limit);
-    params.set_stop_after_first_solution(complex_network && !staged);
+    params.set_stop_after_first_solution(complex_network && !staged && !problem.anchored);
     params.set_num_search_workers(8);
     params.set_random_seed(42);
 
@@ -1042,7 +1236,7 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
                        ? now + std::chrono::duration_cast<Clock::duration>(budget)
                        : Clock::time_point::max();
     };
-    if (staged)
+    if (staged || problem.anchored)
         set_deadline(placement_limit);
     std::optional<BlueprintLayout> best_layout;
     std::pair<int, int> initial_dimensions;
@@ -1058,14 +1252,16 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
     {
         params.set_random_seed(42 + attempt * 17);
         auto placement_model = model.Build();
-        if (staged || best_layout)
+        if (staged || problem.anchored || best_layout)
         {
             const double remaining = std::chrono::duration<double>(deadline - Clock::now()).count();
             if (remaining <= 0)
                 break;
             // Leave time in the initial staged budget for routing and another placement.
+            const double candidate_time =
+                problem.anchored ? std::min(5.0, placement_limit / 8) : placement_limit / 2;
             params.set_max_time_in_seconds(best_layout ? remaining
-                                                       : std::min(remaining, placement_limit / 2));
+                                                       : std::min(remaining, candidate_time));
         }
         Model cp_model;
         cp_model.Add(NewSatParameters(params));
@@ -1079,6 +1275,9 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
                 throw std::runtime_error("Invalid blueprint model: " + response.solution_info());
             if (best_layout)
                 break;
+            if (problem.anchored && response.status() == CpSolverStatus::UNKNOWN &&
+                Clock::now() < deadline)
+                continue;
             status_ = response.status() == CpSolverStatus::INFEASIBLE ? BlueprintStatus::Infeasible
                                                                       : BlueprintStatus::Timeout;
             log(staged ? LogLevel::Debug : LogLevel::Warning, blueprint_name, ": ",
@@ -1134,8 +1333,10 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
         }
 
         fix_plant_paths(network, layout, standalone_plant);
+        layout.blocked_tiles.assign(fixed_tiles.begin(), fixed_tiles.end());
         const auto routing =
-            route_conveyors(layout, streams, grid_w, grid_h, deadline, options_.allow_overpasses);
+            route_conveyors(layout, streams, grid_w, grid_h, deadline, options_.allow_overpasses,
+                            plan.area && plan.area->allow_pipe_over_belt);
         const auto &conflicted_stream_indices = routing.conflicted_stream_indices;
         bool complete = routing.feasible;
         std::vector<std::pair<int, int>> reserved_cells;
@@ -1144,6 +1345,7 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
             for (const auto &[x, y] : reserved_approaches)
                 reserved_cells.emplace_back(SolutionIntegerValue(response, x),
                                             SolutionIntegerValue(response, y));
+            reserved_cells.insert(reserved_cells.end(), fixed_tiles.begin(), fixed_tiles.end());
             if (electric_pylon_)
                 complete = place_electric_pylons(layout, network, *electric_pylon_, grid_w, grid_h,
                                                  reserved_cells, deadline);
@@ -1159,15 +1361,40 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
             }
 
             layout.product_name = blueprint_name;
-            layout.depot_length = total_unloaders * unloader_width;
+            layout.depot_length =
+                total_unloaders * unloader_width + (loader ? entities[stash_entity_id].base_w : 0);
+            layout.needed_climates.clear();
+            layout.emitted_climates.clear();
+            for (const auto &entity : entities)
+                if (const auto *climate = entity.climate)
+                {
+                    const auto &target = layout.entities[entity.id];
+                    const auto &provider = layout.entities[entity.climate_provider];
+                    layout.needed_climates.push_back(
+                        {climate->environment, target.x, target.y, target.width, target.height});
+                    layout.emitted_climates.push_back(
+                        {climate->environment, provider.x - climate->range_x,
+                         provider.y - climate->range_y, provider.width + 2 * climate->range_x,
+                         provider.height + 2 * climate->range_y});
+                }
             const auto normalization_offset = layout.normalize();
+            if (problem.anchored && options_.blueprint_size &&
+                (layout.bounding_width > options_.blueprint_size->first ||
+                 layout.bounding_height > options_.blueprint_size->second))
+                continue;
+            layout.blocked_tiles.clear();
+            if (problem.anchored)
+            {
+                layout.fixed_area = plan.area->name;
+                layout.area_origin = normalization_offset;
+            }
 
             if (!best_layout)
             {
                 set_deadline(options_.compact_seconds);
                 initial_dimensions = {layout.bounding_width, layout.bounding_height};
             }
-            if (!standalone_plant)
+            if (!standalone_plant && !plan.area)
             {
                 const auto [x, y] = normalization_offset;
                 for (auto &cell : reserved_cells)
@@ -1184,7 +1411,7 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
             if (!best_layout)
             {
                 best_layout = layout;
-                if (options_.compact_seconds == 0 || standalone_plant)
+                if (options_.compact_seconds == 0 || standalone_plant || problem.anchored)
                     break;
                 params.set_stop_after_first_solution(true);
                 model.ClearHints();
@@ -1256,7 +1483,7 @@ bool BlueprintSolver::solve_placement(const PlacementProblem &problem, FactoryNe
 
         // Global cut: forbid the exact full placement
         model.AddBoolOr(not_matches);
-        if (complete)
+        if (complete || problem.anchored)
             continue;
 
         // Targeted cuts on conflicted streams (Recommendation 5: Relative displacement cuts)

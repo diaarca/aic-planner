@@ -15,15 +15,19 @@ namespace
 void normalize_port_order(const BlueprintLayout &layout, std::vector<StreamLink> &streams,
                           bool input)
 {
-    std::map<int, std::vector<size_t>> banks;
+    std::map<std::pair<int, MaterialPhase>, std::vector<size_t>> banks;
     for (size_t index = 0; index < streams.size(); ++index)
-        banks[input ? streams[index].dst_entity : streams[index].src_entity].push_back(index);
-    for (const auto &[entity, indices] : banks)
+        banks[{input ? streams[index].dst_entity : streams[index].src_entity, streams[index].phase}]
+            .push_back(index);
+    for (const auto &[bank, indices] : banks)
     {
+        const int entity = bank.first;
         if (entity < 0 || entity >= static_cast<int>(layout.entities.size()) || indices.size() < 2)
             continue;
         if (std::any_of(indices.begin(), indices.end(),
-                        [&](size_t index) { return !streams[index].fixed_path.empty(); }))
+                        [&](size_t index) {
+                            return streams[index].fixed_ports || !streams[index].fixed_path.empty();
+                        }))
             continue;
         std::set<int> assigned;
         for (const auto index : indices)
@@ -67,7 +71,7 @@ void normalize_port_order(const BlueprintLayout &layout, std::vector<StreamLink>
 
 RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &streams, int grid_w,
                               int grid_h, std::chrono::steady_clock::time_point deadline,
-                              bool allow_overpasses)
+                              bool allow_overpasses, bool allow_pipe_over_belt)
 {
     // -------------------------------------------------------------
     // PathFinder Negotiated Congestion Conveyor Router
@@ -75,7 +79,10 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
     layout.conveyor_cells.clear();
     layout.conveyor_items.clear();
     layout.conveyor_paths.clear();
+    layout.path_phases.clear();
     layout.conveyor_overpasses.clear();
+    layout.pipe_overpasses.clear();
+    layout.pipe_belt_crossings.clear();
     layout.is_conveyor_feasible = false;
     auto expired = [&]
     {
@@ -85,7 +92,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
     if (expired())
         return {};
 
-    std::set<std::pair<int, int>> facility_cells;
+    std::set<std::pair<int, int>> facility_cells(layout.blocked_tiles.begin(),
+                                                 layout.blocked_tiles.end());
     for (const auto &pe : layout.entities)
     {
         for (int dy = 0; dy < pe.height; ++dy)
@@ -178,6 +186,10 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
             continue;
         }
         const auto &dst_port = dst_inputs[s.dst_port_idx];
+        const auto medium =
+            s.phase == MaterialPhase::Solid ? TransportMedium::Solid : TransportMedium::Pipe;
+        if (src_port.type != medium || dst_port.type != medium)
+            continue;
 
         int src_ax = src_port.x + src_port.fx;
         int src_ay = src_port.y + src_port.fy;
@@ -220,6 +232,13 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
         W, std::vector<std::vector<std::vector<OccSegment>>>(
                H, std::vector<std::vector<OccSegment>>(2)));
     std::vector<std::vector<int>> cell_history_penalty(W, std::vector<int>(H, 0));
+    const auto bridge_compatible = [&](int lower, int upper, int x, int y)
+    {
+        const bool bottom_belt = streams[lower].phase == MaterialPhase::Solid;
+        const bool top_belt = streams[upper].phase == MaterialPhase::Solid;
+        return bottom_belt == top_belt || (allow_pipe_over_belt && bottom_belt && !top_belt &&
+                                           !all_port_access_cells.count({x, y}));
+    };
 
     auto is_conflicted = [&](int x, int y) -> bool
     {
@@ -230,7 +249,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
         if (occ0.empty() || occ1.empty())
             return false;
         // Both layers have 1 stream: valid if and only if both are straight and perpendicular
-        if (!occ0[0].is_straight || !occ1[0].is_straight)
+        if (!occ0[0].is_straight || !occ1[0].is_straight ||
+            !bridge_compatible(occ0[0].stream_idx, occ1[0].stream_idx, x, y))
             return true;
         bool v0 = (occ0[0].dir_in == 0 || occ0[0].dir_in == 1);
         bool v1 = (occ1[0].dir_in == 0 || occ1[0].dir_in == 1);
@@ -461,7 +481,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
                             {
                                 bool is_v = (dir == 0 || dir == 1);
                                 bool other_v = (occ0[0].dir_in == 0 || occ0[0].dir_in == 1);
-                                if (occ0[0].is_straight && (is_v != other_v))
+                                if (occ0[0].is_straight && (is_v != other_v) &&
+                                    bridge_compatible(occ0[0].stream_idx, s_idx, nx, ny))
                                 {
                                     occ_cost = 0; // Valid perpendicular bridge over Layer 0!
                                 }
@@ -532,7 +553,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
                             {
                                 bool is_v = (dir == 0 || dir == 1);
                                 bool other_v = (occ0[0].dir_in == 0 || occ0[0].dir_in == 1);
-                                if (occ0[0].is_straight && (is_v != other_v))
+                                if (occ0[0].is_straight && (is_v != other_v) &&
+                                    bridge_compatible(occ0[0].stream_idx, s_idx, nx, ny))
                                 {
                                     occ_cost = 0;
                                 }
@@ -715,6 +737,7 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
             const auto &ep = stream_endpoints[s_idx];
             int m = static_cast<int>(path.size()) - 1;
             auto &directed = layout.conveyor_paths.emplace_back();
+            layout.path_phases.push_back(s.phase);
             directed.emplace_back(ep.src_port.x, ep.src_port.y);
 
             for (int k = 0; k <= m; ++k)
@@ -722,7 +745,16 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
                 auto pt = std::make_pair(path[k].x, path[k].y);
                 directed.push_back(pt);
                 if (path[k].layer == 1)
-                    layout.conveyor_overpasses.push_back(pt);
+                {
+                    const auto &underlay = cell_occ[pt.first][pt.second][0];
+                    if (s.phase == MaterialPhase::Solid)
+                        layout.conveyor_overpasses.push_back(pt);
+                    else if (!underlay.empty() &&
+                             streams[underlay.front().stream_idx].phase == MaterialPhase::Solid)
+                        layout.pipe_belt_crossings.push_back(pt);
+                    else
+                        layout.pipe_overpasses.push_back(pt);
+                }
                 int mask = 0;
                 if (k == 0)
                 {
@@ -758,7 +790,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
             // Assign item to src and dst ports for color visualization
             for (auto &p : layout.entities[s.src_entity].ports)
             {
-                if (p.x == ep.src_port.x && p.y == ep.src_port.y)
+                if (!p.is_input && p.type == ep.src_port.type && p.x == ep.src_port.x &&
+                    p.y == ep.src_port.y)
                 {
                     p.item = s.item;
                     break;
@@ -766,7 +799,8 @@ RoutingResult route_conveyors(BlueprintLayout &layout, std::vector<StreamLink> &
             }
             for (auto &p : layout.entities[s.dst_entity].ports)
             {
-                if (p.x == ep.dst_port.x && p.y == ep.dst_port.y)
+                if (p.is_input && p.type == ep.dst_port.type && p.x == ep.dst_port.x &&
+                    p.y == ep.dst_port.y)
                 {
                     p.item = s.item;
                     break;

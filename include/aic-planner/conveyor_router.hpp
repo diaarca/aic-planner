@@ -13,6 +13,8 @@ struct StreamLink
     std::string item;
     double rate = 0;
     std::vector<std::pair<int, int>> fixed_path = {};
+    MaterialPhase phase = MaterialPhase::Solid;
+    bool fixed_ports = false;
 };
 
 struct RoutingResult
@@ -25,5 +27,5 @@ struct RoutingResult
 RoutingResult route_conveyors(
     BlueprintLayout &layout, std::vector<StreamLink> &streams, int grid_width, int grid_height,
     std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::time_point::max(),
-    bool allow_overpasses = true);
+    bool allow_overpasses = true, bool allow_pipe_over_belt = false);
 } // namespace aic

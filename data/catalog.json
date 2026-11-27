@@ -20055,6 +20055,101 @@
         }
       },
       "width": 1
+    },
+    {
+      "display_name": "Pipe Control Port",
+      "height": 1,
+      "id": "log_pipe_conditioner",
+      "inputs": [
+        {
+          "elevation": 0,
+          "fx": 0,
+          "fy": -1,
+          "index": 0,
+          "source_rotation": 180,
+          "type": "pipe",
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "name": "log_pipe_conditioner",
+      "outputs": [
+        {
+          "elevation": 0,
+          "fx": 0,
+          "fy": 1,
+          "index": 0,
+          "source_rotation": 180,
+          "type": "pipe",
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "place_domains": [],
+      "power": 0,
+      "properties": {},
+      "specializations": {
+        "FactoryFluidValveTable": {
+          "defaultRendererTemplate": "liquid__0",
+          "id": "log_pipe_conditioner",
+          "inputPorts": [
+            {
+              "position": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "rotation": {
+                "x": 0,
+                "y": 180,
+                "z": 0
+              }
+            }
+          ],
+          "liquidUnitData": {
+            "buildCamState": "Factory/CCS_Fac_Building_Large",
+            "iconOnPanel": "icon_log_conditioner",
+            "itemId": "item_log_pipe_conditioner",
+            "msPerRound": 500,
+            "name": {
+              "id": 7650448495886982168,
+              "text": ""
+            },
+            "volume": 1
+          },
+          "outputPorts": [
+            {
+              "position": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "rotation": {
+                "x": 0,
+                "y": 180,
+                "z": 0
+              }
+            }
+          ],
+          "range": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "rendererTemplateMap": {
+            "liquid__0": {
+              "logisticBaseUnit": "",
+              "machineId": "log_pipe_conditioner",
+              "machineLevel": 0,
+              "machineModeType": "liquid",
+              "machineRenderId": "log_pipe_conditioner",
+              "nonLogisticBaseUnit": "",
+              "suppressExternalDither": false
+            }
+          }
+        }
+      },
+      "width": 1
     }
   ],
   "fuels": [

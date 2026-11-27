@@ -20,6 +20,14 @@ struct Product
     double factory_height = 0;
     double factory_depot = 0;
     std::map<std::string, double> factory_facilities;
+    std::string candidate_area;
+    bool rebuilding = false;
+
+    std::string layout_key() const
+    {
+        const auto target = rebuilding ? "rebuilding/" + name : name;
+        return candidate_area.empty() ? target : candidate_area + "/" + target;
+    }
 
     static std::vector<Product> read_json(const std::string &filename);
 

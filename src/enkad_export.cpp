@@ -95,6 +95,10 @@ json enkad_blueprint(const BlueprintLayout &layout, const std::vector<Facility> 
 {
     if (!layout.is_conveyor_feasible)
         throw std::invalid_argument("EnKAD export requires a routed blueprint");
+    if (!layout.fixed_area.empty() ||
+        std::any_of(layout.path_phases.begin(), layout.path_phases.end(),
+                    [](MaterialPhase phase) { return phase != MaterialPhase::Solid; }))
+        throw std::invalid_argument("EnKAD export does not support pipes or area-bound blueprints");
 
     auto entities = json::array();
     // EnKAD reflects the source catalog's x axis. The planner reflects its z axis into y.

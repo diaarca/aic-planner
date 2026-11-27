@@ -17,7 +17,17 @@ enum class TransportMedium
     Pipe
 };
 
+enum class MaterialPhase
+{
+    Solid,
+    Liquid,
+    Gas
+};
+
 inline constexpr int solid_belt_seconds_per_item = 2;
+inline constexpr double pipe_units_per_second = 2;
+MaterialPhase material_phase(const std::string &name);
+double transport_capacity(MaterialPhase phase);
 
 struct Port
 {
@@ -26,18 +36,31 @@ struct Port
     TransportMedium type = TransportMedium::Solid;
     int fx = 0; // facing direction dx
     int fy = 0; // facing direction dy
+    int source_index = -1;
 };
 
 struct RecipeIngredient
 {
     std::string item;
     double amount = 0;
+    MaterialPhase phase = MaterialPhase::Solid;
+    std::vector<int> ports;
 };
 
 struct RecipeProduct
 {
     std::string item;
     double amount = 0;
+    MaterialPhase phase = MaterialPhase::Solid;
+    std::vector<int> ports;
+};
+
+struct ActivationFeed
+{
+    std::string item;
+    MaterialPhase phase = MaterialPhase::Solid;
+    double rate = 0; // per second
+    int input = -1;  // source catalog port index
 };
 
 struct Recipe
@@ -49,6 +72,7 @@ struct Recipe
     double time = 0;
     std::vector<RecipeIngredient> ingredients;
     std::vector<RecipeProduct> products;
+    int environment = 0;
 };
 
 struct Facility
@@ -63,6 +87,8 @@ struct Facility
     std::vector<Recipe> recipes;
     bool needs_power = false;
     std::optional<std::pair<int, int>> power_range_extension;
+    std::optional<ActivationFeed> activation;
+    std::map<std::string, double> disposal_rates;
 
     static std::vector<Facility> read_json(const std::string &filename);
     static std::vector<Facility> from_json(const nlohmann::json &data);

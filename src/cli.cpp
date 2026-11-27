@@ -9,7 +9,8 @@ std::string cli_usage()
 {
     return "Usage: aic_planner [--log-level error|warning|info|debug] [--validate] [--no-layouts] "
            "[--list-products] [--product name] [--blueprints-only] [--solve-seconds seconds] "
-           "[--blueprint-size WIDTHxHEIGHT] [--compact-seconds seconds] "
+           "[--blueprint-size WIDTHxHEIGHT] [--placement-seconds seconds] "
+           "[--compact-seconds seconds] "
            "[--export-enkad directory] [--seed-loop seed] "
            "[--plant-loop plant] [--list-seed-loops] <data_folder>\n";
 }
@@ -51,7 +52,8 @@ CliOptions parse_cli(int argc, const char *const argv[])
         }
         if (argument == "--log-level")
             options.verbosity = parse_log_level(value());
-        else if (argument == "--solve-seconds" || argument == "--compact-seconds")
+        else if (argument == "--solve-seconds" || argument == "--placement-seconds" ||
+                 argument == "--compact-seconds")
         {
             const auto text = value();
             size_t parsed = 0;
@@ -67,8 +69,12 @@ CliOptions parse_cli(int argc, const char *const argv[])
             }
             if (parsed != text.size() || !std::isfinite(seconds) || seconds <= 0)
                 throw std::invalid_argument(error);
-            (argument == "--solve-seconds" ? options.solve_seconds : options.compact_seconds) =
-                seconds;
+            if (argument == "--solve-seconds")
+                options.solve_seconds = seconds;
+            else if (argument == "--placement-seconds")
+                options.placement_seconds = seconds;
+            else
+                options.compact_seconds = seconds;
         }
         else if (argument == "--product")
             set_target(TargetKind::SaleProduct, value());

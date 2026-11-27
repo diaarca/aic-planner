@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <iostream>
 #include <map>
+#include <memory>
+#include <set>
 #include <string>
 
 int main(int argc, char *argv[])
@@ -31,7 +33,18 @@ int main(int argc, char *argv[])
                 throw std::invalid_argument("Unknown sale product: " + options.target);
             data.products = {*found};
         }
-        RecipeGraph graph(data.facilities, data.region.resources, data.automatic_recipes);
+        const bool wuling = data.region.market_region == "domain_2";
+        const auto configured_area = [](const Area &area)
+        { return area.pac_width > 0 && area.pac_height > 0; };
+        std::vector<const Area *> area_contexts;
+        if (wuling)
+            for (const auto &area : data.areas)
+                if (configured_area(area))
+                    area_contexts.push_back(&area);
+        if (!wuling)
+            area_contexts.push_back(nullptr);
+        RecipeGraph graph(data.facilities, data.region.resources, data.automatic_recipes,
+                          area_contexts.empty() ? nullptr : area_contexts.front());
         if (options.command == Command::ListSeedLoops)
         {
             std::cout << "Seed output | Starter flower type\n";
@@ -62,21 +75,50 @@ int main(int argc, char *argv[])
                 std::cout << product.name << ": " << product.value << '\n';
             return 0;
         }
+        if (area_contexts.empty())
+            throw std::invalid_argument(
+                "Wuling areas.json needs an area with pac_width and pac_height");
+        if (wuling && data.region.storage <= 0)
+            throw std::invalid_argument("Wuling region.json needs a positive storage value");
+        if (wuling && !data.region.base_power_configured)
+            throw std::invalid_argument("Wuling region.json needs an explicit base_power value");
+        if (!options.target.empty())
+            data.region.rebuilding_orders.clear();
+        for (const auto &order : data.region.rebuilding_orders)
+        {
+            Product target;
+            target.name = order.first;
+            target.rebuilding = true;
+            data.products.push_back(std::move(target));
+        }
         if (options.command == Command::Validate)
         {
             size_t supported = 0;
             for (const auto &product : data.products)
-                try
+            {
+                bool feasible = false;
+                for (const auto *area : area_contexts)
                 {
-                    graph.validate_target(product.name);
-                    ++supported;
+                    if (product.rebuilding && (!area || !area->rebuilding_port))
+                        continue;
+                    try
+                    {
+                        RecipeGraph candidate(data.facilities, data.region.resources,
+                                              data.automatic_recipes, area);
+                        candidate.validate_target(product.name);
+                        feasible = true;
+                        break;
+                    }
+                    catch (const std::invalid_argument &error)
+                    {
+                        if (!data.automatic_recipes && !wuling)
+                            throw;
+                        log(LogLevel::Warning, product.name, area ? " in " + area->name : "", ": ",
+                            error.what());
+                    }
                 }
-                catch (const std::invalid_argument &error)
-                {
-                    if (!data.automatic_recipes)
-                        throw;
-                    log(LogLevel::Warning, product.name, ": ", error.what());
-                }
+                supported += feasible;
+            }
             log(LogLevel::Info, supported, " of ", data.products.size(),
                 " targets have balanced production plans");
             log(LogLevel::Info, "Dataset valid; supported target dependencies checked");
@@ -87,14 +129,21 @@ int main(int argc, char *argv[])
             facility_powers[facility.name] = facility.power;
         BlueprintOptions blueprint_options;
         blueprint_options.automatic_recipes = data.automatic_recipes;
+        blueprint_options.placement_seconds = options.placement_seconds;
         blueprint_options.compact_seconds = options.compact_seconds;
         blueprint_options.allow_overpasses = options.enkad_directory.empty();
         blueprint_options.blueprint_size = options.blueprint_size;
-        BlueprintSolver blueprint_solver(data.facilities, data.region.resources, data.areas,
-                                         blueprint_options);
+        std::vector<std::unique_ptr<BlueprintSolver>> blueprint_solvers;
+        for (const auto *area : area_contexts)
+        {
+            blueprint_options.local_area = area;
+            blueprint_solvers.push_back(std::make_unique<BlueprintSolver>(
+                data.facilities, data.region.resources, data.areas, blueprint_options));
+        }
         if (!options.enkad_directory.empty())
             std::filesystem::create_directories(options.enkad_directory);
         size_t exported = 0;
+        std::set<std::string> generated;
         std::vector<Product> producible_products;
         std::map<std::string, BlueprintLayout> layouts;
         log(LogLevel::Info, "Generating factory blueprints for ", data.products.size(),
@@ -102,43 +151,60 @@ int main(int argc, char *argv[])
         if (options.blueprint_size)
             log(LogLevel::Info, "Blueprint placement limit: ", options.blueprint_size->first, " x ",
                 options.blueprint_size->second);
-        for (auto product : data.products)
+        const auto generate = [&](const Product &target, bool reuse_only)
         {
-            BlueprintLayout layout;
-            try
+            bool target_exported = false;
+            for (size_t index = 0; index < blueprint_solvers.size(); ++index)
             {
-                if (!blueprint_solver.solve(product, layout))
-                    continue;
-            }
-            catch (const std::invalid_argument &error)
-            {
-                log(LogLevel::Warning, "Skipping ", product.name, ": ", error.what());
-                continue;
-            }
-            log(LogLevel::Info, "Blueprint generated for ", product.name);
-            if (!options.no_layouts)
-                layout.print();
-            if (!options.enkad_directory.empty())
+                auto product = target;
+                if (const auto *area = area_contexts[index])
+                    product.candidate_area = area->name;
+                BlueprintLayout layout;
                 try
                 {
-                    const auto destination =
-                        write_enkad_blueprint(options.enkad_directory, layout, data.facilities);
-                    ++exported;
-                    log(LogLevel::Info, "EnKAD export: ", destination.string());
+                    if (!blueprint_solvers[index]->solve(product, layout, reuse_only))
+                        continue;
                 }
-                catch (const std::exception &error)
+                catch (const std::invalid_argument &error)
                 {
-                    log(LogLevel::Error, "Could not export ", product.name, ": ", error.what());
+                    if (!reuse_only)
+                        log(LogLevel::Warning, "Skipping ", product.layout_key(), ": ",
+                            error.what());
+                    continue;
                 }
-            layouts.emplace(product.name, std::move(layout));
-            producible_products.push_back(std::move(product));
-        }
+                generated.insert(target.layout_key());
+                log(LogLevel::Info, "Blueprint generated for ", product.layout_key(), " at ",
+                    layout.output_per_minute, " units/min");
+                if (!options.no_layouts)
+                    layout.print();
+                if (!options.enkad_directory.empty() && !target_exported)
+                    try
+                    {
+                        const auto destination =
+                            write_enkad_blueprint(options.enkad_directory, layout, data.facilities);
+                        ++exported;
+                        target_exported = true;
+                        log(LogLevel::Info, "EnKAD export: ", destination.string());
+                    }
+                    catch (const std::exception &error)
+                    {
+                        log(LogLevel::Error, "Could not export ", product.name, ": ", error.what());
+                    }
+                layouts.emplace(product.layout_key(), std::move(layout));
+                producible_products.push_back(std::move(product));
+            }
+        };
+        for (const auto &target : data.products)
+            generate(target, false);
+        if (!wuling)
+            for (const auto &target : data.products)
+                if (!generated.count(target.layout_key()))
+                    generate(target, true);
 
-        log(LogLevel::Info, "Blueprints generated: ", producible_products.size(), "/",
-            data.products.size());
+        log(LogLevel::Info, "Blueprints generated: ", generated.size(), "/", data.products.size());
         if (producible_products.empty())
             throw std::runtime_error("No supported, successfully routed target blueprints");
-        const bool blueprints_complete = producible_products.size() == data.products.size();
+        const bool blueprints_complete = generated.size() == data.products.size();
         const bool exports_complete =
             options.enkad_directory.empty() || exported == data.products.size();
         if (!options.enkad_directory.empty())

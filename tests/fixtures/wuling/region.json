@@ -1,0 +1,10 @@
+{
+  "catalog": "../../../data/catalog.json",
+  "market_region": "domain_2",
+  "base_power": 1000,
+  "storage": 80000,
+  "resources": [
+    {"item": "item_carbon_mtl", "limit": 120},
+    {"item": "item_copper_ore", "limit": 120}
+  ]
+}

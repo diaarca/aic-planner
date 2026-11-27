@@ -213,20 +213,21 @@ def convert(tables, version, hashes, aliases):
                            "properties": building,
                            "specializations": {name: table[identity] for name in SPECIALIZATION_TABLES
                                                if identity in (table := tables[name])}})
-    for identity, router in sorted(tables["FactoryLiquidRouterTable"].items()):
-        if identity in buildings:
-            continue
-        width, depth = router["range"]["x"], router["range"]["z"]
-        ports = {}
-        for side in ("input", "output"):
-            ports[side] = [convert_port({"trans": transform, "index": index,
-                                        "isOutput": side == "output", "isPipe": True}, width, depth)
-                           for index, transform in enumerate(router[side + "Ports"])]
-        facilities.append({"id": identity, "name": identity,
-                           "display_name": localized(router["liquidUnitData"], localization, identity),
-                           "power": 0, "width": width, "height": depth, "place_domains": [],
-                           "inputs": ports["input"], "outputs": ports["output"],
-                           "properties": {}, "specializations": {"FactoryLiquidRouterTable": router}})
+    for table_name in ("FactoryLiquidRouterTable", "FactoryFluidValveTable"):
+        for identity, router in sorted(tables[table_name].items()):
+            if identity in buildings:
+                continue
+            width, depth = router["range"]["x"], router["range"]["z"]
+            ports = {}
+            for side in ("input", "output"):
+                ports[side] = [convert_port({"trans": transform, "index": index,
+                                            "isOutput": side == "output", "isPipe": True}, width, depth)
+                               for index, transform in enumerate(router[side + "Ports"])]
+            facilities.append({"id": identity, "name": identity,
+                               "display_name": localized(router["liquidUnitData"], localization, identity),
+                               "power": 0, "width": width, "height": depth, "place_domains": [],
+                               "inputs": ports["input"], "outputs": ports["output"],
+                               "properties": {}, "specializations": {table_name: router}})
     by_id = {f["id"]: f for f in facilities}
     recipes = []
     factory_items = tables["FactoryItemTable"]

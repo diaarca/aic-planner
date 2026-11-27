@@ -7,6 +7,23 @@
 namespace aic
 {
 
+MaterialPhase material_phase(const std::string &name)
+{
+    if (name == "solid")
+        return MaterialPhase::Solid;
+    if (name == "liquid")
+        return MaterialPhase::Liquid;
+    if (name == "gas")
+        return MaterialPhase::Gas;
+    throw std::invalid_argument("Unknown material phase: " + name);
+}
+
+double transport_capacity(MaterialPhase phase)
+{
+    return phase == MaterialPhase::Solid ? 1.0 / solid_belt_seconds_per_item
+                                         : pipe_units_per_second;
+}
+
 static int tile(const nlohmann::json &item, const char *field)
 {
     const auto &value = item.at(field);
@@ -93,6 +110,7 @@ std::vector<Facility> Facility::from_json(const nlohmann::json &j)
                 Port port;
                 port.x = tile(value, "x");
                 port.y = tile(value, "y");
+                port.source_index = value.value("index", static_cast<int>(ports.size()));
                 const auto medium = value.value("type", "solid");
                 if (medium != "solid" && medium != "product" && medium != "liquid" &&
                     medium != "pipe")
@@ -114,6 +132,16 @@ std::vector<Facility> Facility::from_json(const nlohmann::json &j)
         };
         f.inputs = read_ports("inputs");
         f.outputs = read_ports("outputs");
+        if (item.contains("activation"))
+        {
+            const auto &activation = item.at("activation");
+            f.activation = ActivationFeed{
+                activation.at("item"), material_phase(activation.at("transport")),
+                activation.at("per_minute").get<double>() / 60, tile(activation, "port")};
+        }
+        for (const auto &[name, rate] :
+             item.value("disposal_rates", std::map<std::string, double>{}))
+            f.disposal_rates.emplace(name, rate / 60);
 
         if (item.contains("recipes"))
         {
@@ -126,28 +154,48 @@ std::vector<Facility> Facility::from_json(const nlohmann::json &j)
                     rec.value("unsupported_reasons", std::vector<std::string>{});
                 r.name = rec.value("name", "");
                 r.time = rec.value("time", 0.0);
+                r.environment = rec.value("environment", 0);
 
-                if (rec.contains("ingredients"))
+                const auto read_materials = [&](const char *key, const char *groups_key,
+                                                const char *solid_key, const char *pipe_key,
+                                                auto &materials)
                 {
-                    for (const auto &ing : rec["ingredients"])
+                    if (!rec.contains(key))
+                        return;
+                    const auto read = [&](const auto &value, size_t group)
                     {
-                        RecipeIngredient ri;
-                        ri.item = ing.value("item", "");
-                        ri.amount = ing.value("amount", 0.0);
-                        r.ingredients.push_back(ri);
-                    }
-                }
-
-                if (rec.contains("products"))
-                {
-                    for (const auto &prod : rec["products"])
+                        typename std::decay_t<decltype(materials)>::value_type entry;
+                        entry.item = value.value("item", "");
+                        entry.amount = value.value("amount", 0.0);
+                        entry.phase = material_phase(value.value("transport", "solid"));
+                        if (r.has_port_bindings)
+                        {
+                            const bool pipe = entry.phase != MaterialPhase::Solid;
+                            const auto &bindings =
+                                rec.at("port_bindings").at(pipe ? pipe_key : solid_key);
+                            const size_t binding = bindings.size() == 1 ? 0 : group;
+                            if (binding < bindings.size())
+                                entry.ports = bindings.at(binding)
+                                                  .at("bindingPortIndices")
+                                                  .template get<std::vector<int>>();
+                        }
+                        materials.push_back(std::move(entry));
+                    };
+                    if (!rec.contains(groups_key))
                     {
-                        RecipeProduct rp;
-                        rp.item = prod.value("item", "");
-                        rp.amount = prod.value("amount", 0.0);
-                        r.products.push_back(rp);
+                        for (const auto &value : rec.at(key))
+                            read(value, 0);
+                        return;
                     }
-                }
+                    const auto &groups = rec.at(groups_key);
+                    for (size_t group = 0; group < groups.size(); ++group)
+                        for (const auto &value : groups.at(group))
+                            read(value, group);
+                };
+                read_materials("ingredients", "ingredient_groups", "ingredientBufferBinding",
+                               "pipeIngredientBufferBinding", r.ingredients);
+                read_materials("products", "product_groups", "outcomeBufferBinding",
+                               "pipeOutcomeBufferBinding", r.products);
                 f.recipes.push_back(r);
             }
         }

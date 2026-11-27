@@ -21,10 +21,13 @@ Region Region::read_json(const std::string &filename)
     region.active_time_ids = j.value("active_time_ids", std::vector<std::string>{});
     region.enabled_facilities = j.value("enabled_facilities", std::vector<std::string>{});
     region.enabled_recipes = j.value("enabled_recipes", std::vector<std::string>{});
+    region.rebuilding_orders = j.value("rebuilding_orders", std::map<std::string, double>{});
+    region.facility_limits = j.value("facility_limits", std::map<std::string, int>{});
     for (const auto &resource : j.at("resources"))
         region.resources.emplace_back(resource.at("item").get<std::string>(),
                                       resource.at("limit").get<double>());
     region.base_power = j.value("base_power", 0.0);
+    region.base_power_configured = j.contains("base_power");
     region.storage = j.value("storage", 0.0);
     return region;
 }

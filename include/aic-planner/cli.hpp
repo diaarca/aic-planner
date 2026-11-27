@@ -31,6 +31,7 @@ struct CliOptions
     bool no_layouts = false;
     bool blueprints_only = false;
     double solve_seconds = 30.0;
+    double placement_seconds = 2.0;
     double compact_seconds = 0.0;
     std::optional<std::pair<int, int>> blueprint_size;
     LogLevel verbosity = LogLevel::Info;

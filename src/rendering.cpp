@@ -185,6 +185,16 @@ void BlueprintLayout::print() const
                  "=============================\033[0m\n\n";
 
     std::cout << "  Net output: " << output_per_minute << " items/min\n";
+    if (!fixed_area.empty())
+        std::cout << "  Area: " << fixed_area << " at (" << area_origin.first << ", "
+                  << area_origin.second << ")\n";
+    const auto pipes =
+        std::count_if(path_phases.begin(), path_phases.end(),
+                      [](MaterialPhase phase) { return phase != MaterialPhase::Solid; });
+    if (pipes)
+        std::cout << "  Pipe routes: " << pipes << "\n";
+    if (!pipe_belt_crossings.empty())
+        std::cout << "  Elevated pipe/belt crossings: " << pipe_belt_crossings.size() << "\n";
 
     struct CellInfo
     {
@@ -439,6 +449,8 @@ void BlueprintLayout::print() const
         }
         if (!e.seed_loop.empty())
             std::cout << " | Seed loop: " << e.seed_loop;
+        if (!e.operating_mode.empty())
+            std::cout << " | Mode: " << e.operating_mode;
         if (!e.recipe_name.empty())
             std::cout << " | Recipe: " << e.recipe_name
                       << " | Utilization: " << std::round(e.utilization * 100) << '%';
@@ -491,8 +503,13 @@ void Solver::display_solution()
             int64_t total_factories = 0;
             for (size_t a = 0; a < areas_.size(); ++a)
                 total_factories += SolutionIntegerValue(response_, factories_in_area_[p][a]);
-            std::cout << products_[p].name << ": " << produced << " units ["
-                      << total_factories << " factories]" << std::endl;
+            std::cout << products_[p].name;
+            if (products_[p].rebuilding)
+                std::cout << " [rebuilding delivery]";
+            if (!products_[p].candidate_area.empty())
+                std::cout << " (" << products_[p].candidate_area << ')';
+            std::cout << ": " << produced << " units [" << total_factories << " factories]"
+                      << std::endl;
         }
     }
 
@@ -528,8 +545,11 @@ void Solver::display_solution()
             std::cout << "  Space used: " << used_space << " / "
                       << (areas_[a].pac_width * areas_[a].pac_height) << std::endl;
 
-            std::cout << "  Depot length used: " << used_depot << " / "
-                      << areas_[a].pac_depot_width + areas_[a].pac_depot_height << std::endl;
+            if (areas_[a].depot_bus.empty())
+                std::cout << "  Depot length used: " << used_depot << " / "
+                          << areas_[a].pac_depot_width + areas_[a].pac_depot_height << std::endl;
+            else
+                std::cout << "  Depot Bus frontage used: " << used_depot << " tiles\n";
         }
     }
 
@@ -648,7 +668,7 @@ void Solver::display_area_layouts()
                 int bw = SolutionIntegerValue(response_, slot.bw);
                 int bh = SolutionIntegerValue(response_, slot.bh);
 
-                const auto &layout = product_layouts_.at(products_[p_idx].name);
+                const auto &layout = product_layouts_.at(products_[p_idx].layout_key());
                 int W_0 = layout.bounding_width;
                 int H_0 = layout.bounding_height;
 

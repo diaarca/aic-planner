@@ -1,0 +1,32 @@
+[
+  {
+    "area": "synthetic",
+    "pac_width": 38,
+    "pac_height": 30,
+    "depot_bus": [
+      {"facility": "log_hongs_bus_source", "x": 0, "y": 26, "rotation": 0},
+      {"facility": "log_hongs_bus", "x": 4, "y": 26, "rotation": 90},
+      {"facility": "log_hongs_bus", "x": 12, "y": 26, "rotation": 90}
+    ],
+    "sources": [
+      {"item": "item_liquid_water", "facility": "pump_1", "x": 1, "y": 15, "rotation": 0, "limit": 60},
+      {"item": "item_gas_inert", "facility": "gas_pump_1", "x": 2, "y": 8, "rotation": 0, "limit": 20},
+      {"item": "item_gas_xiranite", "facility": "gas_pump_1", "x": 20, "y": 6, "rotation": 180, "limit": 20},
+      {"item": "item_gas_xiranite", "facility": "udpipe_unloader_1", "x": 20, "y": 13, "rotation": 180, "limit": 20, "conduit_connection": "synthetic_xiragen"}
+    ],
+    "climates": [
+      {"environment": 1, "gas": "item_gas_inert", "rate": 6, "range_x": 7, "range_y": 7}
+    ],
+    "array_fields": {
+      "E": {
+        "belt_rotation": 0,
+        "cycle_seconds": 10,
+        "projectors": [
+          {"mode": "L", "dx": -2, "dy": 4, "rotation": 0, "feed": 6},
+          {"mode": "T", "dx": -2, "dy": -8, "rotation": 180, "feed": 6}
+        ]
+      }
+    },
+    "rebuilding_port": {"x": 12, "y": 5, "rotation": 180}
+  }
+]

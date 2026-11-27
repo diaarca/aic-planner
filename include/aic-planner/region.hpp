@@ -21,6 +21,9 @@ struct Region
     std::vector<std::string> active_time_ids;
     std::vector<std::string> enabled_facilities;
     std::vector<std::string> enabled_recipes;
+    std::map<std::string, double> rebuilding_orders; // Items/min.
+    std::map<std::string, int> facility_limits;
+    bool base_power_configured = false;
     double base_power = 0;
     double storage = 0;
 

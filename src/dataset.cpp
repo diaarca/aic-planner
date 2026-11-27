@@ -168,7 +168,7 @@ void load_catalog(const std::filesystem::path &path, Dataset &data)
                 !bindings.at("pipeOutcomeBufferBinding").empty())
                 solid_only = false;
         }
-        if (solid_only)
+        if (solid_only && !facility["recipes"].empty())
             for (const auto *side : {"inputs", "outputs"})
             {
                 auto &ports = facility[side];
@@ -187,16 +187,110 @@ void load_catalog(const std::filesystem::path &path, Dataset &data)
                 resource.name = item.at("name").get<std::string>();
                 break;
             }
+    for (const auto &order : region.rebuilding_orders)
+    {
+        const auto &name = order.first;
+        const double rate = order.second;
+        const auto &items = catalog.at("items");
+        require(std::any_of(items.begin(), items.end(),
+                            [&](const auto &item) {
+                                return item.at("name") == name &&
+                                       item.value("transport", "solid") == "solid";
+                            }),
+                "Unknown solid rebuilding order item: " + name);
+        number(rate, name + " rebuilding order rate");
+        require(std::floor(rate) == rate, "Rebuilding order rate must be in whole items/min");
+    }
+    for (const auto &[id, record] : selected)
+    {
+        const auto &properties = record.at("properties");
+        if (data.region.market_region != "domain_2" ||
+            !properties.contains("placeDomainLimitCnt") ||
+            properties.at("placeDomainLimitCnt").empty())
+            continue;
+        const auto &limits = properties.at("placeDomainLimitCnt");
+        region.facility_limits.try_emplace(record.at("name").get<std::string>(),
+                                           limits.front().get<int>());
+    }
+    std::set<std::string> conduit_connections;
+    for (auto &area : data.areas)
+    {
+        for (auto &climate_entry : area.climates)
+        {
+            auto &climate = climate_entry.second;
+            const auto &items = catalog.at("items");
+            const auto item = std::find_if(items.begin(), items.end(),
+                                           [&](const auto &entry) {
+                                               return entry.at("id") == climate.gas ||
+                                                      entry.at("name") == climate.gas;
+                                           });
+            require(item != items.end() && item->value("transport", "solid") == "gas",
+                    "Unknown climate gas " + climate.gas + " in " + area.name);
+            climate.gas = item->at("name");
+        }
+        for (auto &source : area.sources)
+        {
+            const auto &items = catalog.at("items");
+            const auto item = std::find_if(items.begin(), items.end(),
+                                           [&](const auto &entry) {
+                                               return entry.at("id") == source.item ||
+                                                      entry.at("name") == source.item;
+                                           });
+            require(item != items.end(),
+                    "Unknown area source item " + source.item + " in " + area.name);
+            source.item = item->at("name");
+            require(item->value("transport", "solid") != "solid",
+                    "Area source must supply liquid or gas: " + source.item + " in " + area.name);
+            const auto found = selected.find(source.facility);
+            require(found != selected.end(),
+                    "Unknown or disabled area extractor: " + source.facility);
+            const auto &specializations = found->second.at("specializations");
+            const auto raw_id = item->at("id");
+            double maximum = 0;
+            if (specializations.contains("FactoryGasMinerTable"))
+            {
+                const auto &spec = specializations.at("FactoryGasMinerTable");
+                for (const auto &entry : spec.at("mineable"))
+                    if (entry.at("miningItemId") == raw_id &&
+                        entry.at("consumeItem").at("count") == 0)
+                        maximum = 60000 * entry.at("produceRate").get<double>() /
+                                  spec.at("msPerRound").get<double>();
+            }
+            if (specializations.contains("FactoryFluidPumpInTable"))
+            {
+                const auto &spec = specializations.at("FactoryFluidPumpInTable");
+                const auto &media = spec.at("enableLiquidIds");
+                if (std::find(media.begin(), media.end(), raw_id) != media.end())
+                    maximum = 60000 / spec.at("msPerRound").get<double>();
+            }
+            if (source.facility == "udpipe_unloader_1" || source.facility == "udpipe_unloader_2")
+            {
+                unique(conduit_connections, source.conduit_connection,
+                       "conduit_connection in " + area.name);
+                const auto &spec = specializations.at("FactoryUndergroundPipeTable");
+                maximum = std::min(60 * pipe_units_per_second,
+                                   60000 / spec.at("msPerRound").get<double>());
+            }
+            else
+                require(source.conduit_connection.empty(),
+                        "conduit_connection requires a Conduit Outlet in " + area.name);
+            require(maximum > 0 && source.limit <= maximum,
+                    "Invalid extractor or rate for " + source.item + " in " + area.name +
+                        " (maximum " + std::to_string(maximum) + "/min)");
+            source.facility = found->second.at("name");
+        }
+    }
     log(LogLevel::Info, "Loaded catalog ", catalog.at("source").at("version").get<std::string>());
     data.facilities = Facility::from_json(output);
 }
 void validate(Dataset &data)
 {
     number(data.region.base_power, "base_power", true);
-    number(data.region.storage, "storage");
+    const bool wuling = data.region.market_region == "domain_2";
+    number(data.region.storage, "storage", wuling);
     require(std::floor(data.region.base_power) == data.region.base_power,
             "base_power must be integer power units");
-    require(!data.products.empty() && !data.facilities.empty() && !data.areas.empty(),
+    require(!data.products.empty() && !data.facilities.empty() && (wuling || !data.areas.empty()),
             "Empty essential dataset");
     std::set<std::string> resources, facilities, recipes, products, areas, fuels;
     for (const auto &resource : data.region.resources)
@@ -250,14 +344,15 @@ void validate(Dataset &data)
         require(std::abs(product.value * 1000 - std::round(product.value * 1000)) < 1e-6,
                 "Product values support at most three decimal places");
     }
-    for (const auto &area : data.areas)
+    for (auto &area : data.areas)
     {
         unique(areas, area.name, "area");
         number(area.pac_width, area.name + " width", true);
         number(area.pac_height, area.name + " height", true);
-        require(std::floor(area.pac_width) == area.pac_width &&
-                    std::floor(area.pac_height) == area.pac_height,
+        require(std::floor(area.pac_width) == area.pac_width && area.pac_width <= 1000 &&
+                    std::floor(area.pac_height) == area.pac_height && area.pac_height <= 1000,
                 "Area dimensions must be integer tiles");
+        validate_area_installations(area, data.facilities);
         for (const auto &[facility, count] : area.area_facilities)
         {
             number(count, "Infrastructure count", true);
@@ -286,6 +381,9 @@ void validate(Dataset &data)
                     "Multiple depot segments on one edge are unsupported: " + area.name);
         }
     }
+    for (const auto &[facility, limit] : data.region.facility_limits)
+        require(facilities.count(facility) && limit >= 0,
+                "Invalid facility limit in region.json: " + facility);
     for (const auto &fuel : data.fuels)
     {
         unique(fuels, fuel.name, "fuel");

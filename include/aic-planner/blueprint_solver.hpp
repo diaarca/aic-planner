@@ -30,6 +30,7 @@ struct BlueprintOptions
     double compact_seconds = 0.0;
     bool allow_overpasses = true;
     std::optional<std::pair<int, int>> blueprint_size = std::nullopt;
+    const Area *local_area = nullptr;
 };
 
 class BlueprintSolver
@@ -38,7 +39,7 @@ class BlueprintSolver
     BlueprintSolver(const std::vector<Facility> &facilities, const std::vector<Mineral> &minerals,
                     const std::vector<Area> &areas, BlueprintOptions options = {});
 
-    bool solve(Product &product, BlueprintLayout &layout);
+    bool solve(Product &product, BlueprintLayout &layout, bool reuse_only = false);
     BlueprintStatus status() const
     {
         return status_;
@@ -58,6 +59,8 @@ class BlueprintSolver
     std::map<std::string, RoutedLayout> routed_layouts_;
 
     struct PlacementProblem;
+    bool solve_plan(Product &product, BlueprintLayout &layout, const ProductionPlan &plan,
+                    bool reuse_only = false);
     bool solve_placement(const PlacementProblem &problem, FactoryNetwork network,
                          const std::map<int, std::vector<int>> &stages, BlueprintLayout &layout);
     bool is_mineral(const std::string &item) const;
