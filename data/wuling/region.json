@@ -1,5 +1,12 @@
 {
   "catalog": "../catalog.json",
+  "base_power": 200,
+  "storage": 80000,
   "market_region": "domain_2",
-  "resources": []
+  "resources": [
+    {"item": "originium_ore", "limit": 540},
+    {"item": "ferrium_ore", "limit": 120},
+    {"item": "item_copper_ore", "limit": 420}
+  ],
+  "facility_limits": {"xiranite_oven_1": 16}
 }

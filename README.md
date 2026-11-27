@@ -140,7 +140,7 @@ Inspect every imported regional sale price without running placement:
 
 - `data/test` is a fixed, self-contained regression fixture for SC Valley Battery and Ferrium Part production.
 - `data/valley_iv` uses every imported permanent sale product for Valley IV (14 in the checked-in snapshot), with prices and fuel specifications loaded from the shared catalog. Outposts default to maximum permanent unlocks. Area capacities and resource budgets are inherited project settings; infrastructure counts are not populated.
-- `data/wuling` uses the same catalog for its market. Add your area dimensions, Depot Bus geometry, and local supplies before running the planner. See the [Wuling setup guide](docs/WULING.md).
+- `data/wuling` includes expanded Wuling City and Jingyu Valley reference layouts and regional supply budgets. See the [Wuling setup guide](docs/WULING.md) for the source data and how to adapt it to your save.
 - `region.json` stores external supplies, base power, inventory capacity, catalog location, and market region ID. `areas.json` stores building areas and depot segments. Catalog-backed markets derive targets, prices, and fuel data automatically. Self-contained test fixtures retain `products.json`, `fuels.json`, and `facilities.json`.
 
 The checked-in Valley IV dataset generates blueprints for all 14 sale products. Per-machine flow allocation checks transport capacity and physical ports. Wuling adds area-local extraction, liquid and gas pipelines, co-product treatment, and recipes that require a supplied gaseous environment.

@@ -1,1 +1,48 @@
-[]
+[
+  {
+    "area": "wuling_city",
+    "pac_width": 80,
+    "pac_height": 80,
+    "allow_pipe_over_belt": true,
+    "facilities": {"pump_1": 3, "pump_2": 1},
+    "depot_bus": [
+      {"facility": "log_hongs_bus_source", "x": 12, "y": 68, "rotation": 0},
+      {"facility": "log_hongs_bus", "x": 16, "y": 68, "rotation": 90},
+      {"facility": "log_hongs_bus", "x": 24, "y": 68, "rotation": 90},
+      {"facility": "log_hongs_bus", "x": 32, "y": 68, "rotation": 90}
+    ],
+    "sources": [
+      {"item": "item_liquid_water", "facility": "udpipe_unloader_1", "x": 12, "y": 53, "rotation": 0, "limit": 120, "conduit_connection": "city_water_pair"},
+      {"item": "item_liquid_water", "facility": "udpipe_unloader_1", "x": 12, "y": 45, "rotation": 0, "limit": 60, "conduit_connection": "city_water_single"},
+      {"item": "item_gas_inert", "facility": "udpipe_unloader_1", "x": 20, "y": 53, "rotation": 0, "limit": 60, "conduit_connection": "city_inergen"},
+      {"item": "item_gas_xiranite", "facility": "udpipe_unloader_1", "x": 26, "y": 53, "rotation": 0, "limit": 100, "conduit_connection": "north_wuling_xiragen"},
+      {"item": "item_liquid_acid", "facility": "udpipe_unloader_1", "x": 32, "y": 53, "rotation": 0, "limit": 60, "conduit_connection": "imported_precipitation_acid"}
+    ],
+    "climates": [
+      {"environment": 1, "gas": "item_gas_inert", "rate": 6, "range_x": 5, "range_y": 5},
+      {"environment": 3, "gas": "item_gas_acid", "rate": 6, "range_x": 5, "range_y": 5}
+    ],
+    "power_pylon": "power_diffuser_2"
+  },
+  {
+    "area": "jingyu_valley",
+    "pac_width": 50,
+    "pac_height": 50,
+    "allow_pipe_over_belt": true,
+    "facilities": {"pump_1": 3},
+    "depot_bus": [
+      {"facility": "log_hongs_bus_source", "x": 4, "y": 42, "rotation": 0},
+      {"facility": "log_hongs_bus", "x": 8, "y": 42, "rotation": 90},
+      {"facility": "log_hongs_bus", "x": 16, "y": 42, "rotation": 90}
+    ],
+    "sources": [
+      {"item": "item_liquid_water", "facility": "udpipe_unloader_1", "x": 4, "y": 31, "rotation": 0, "limit": 120, "conduit_connection": "jingyu_water_pair"},
+      {"item": "item_liquid_water", "facility": "udpipe_unloader_1", "x": 4, "y": 24, "rotation": 0, "limit": 60, "conduit_connection": "jingyu_water_single"},
+      {"item": "item_gas_inert", "facility": "udpipe_unloader_1", "x": 12, "y": 31, "rotation": 0, "limit": 20, "conduit_connection": "jingyu_inergen"}
+    ],
+    "climates": [
+      {"environment": 1, "gas": "item_gas_inert", "rate": 6, "range_x": 5, "range_y": 5}
+    ],
+    "power_pylon": "power_diffuser_2"
+  }
+]

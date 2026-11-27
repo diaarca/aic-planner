@@ -1,6 +1,6 @@
 # Configure Wuling
 
-Wuling uses the shared AKEData catalog. The shipped dataset identifies the region and loads its sale offers, facilities, and recipes. Enter the geometry and supplies from your game before asking the planner to generate layouts.
+Wuling uses the shared AKEData catalog. The shipped dataset provides reference layouts for the expanded Wuling City Core and Jingyu Valley Sub-PAC. Adjust the geometry and supply rates to match your save.
 
 ```sh
 ./build/bin/aic_planner --list-products data/wuling
@@ -10,6 +10,15 @@ Wuling uses the shared AKEData catalog. The shipped dataset identifies the regio
 ```
 
 The pinned snapshot is `1.7.2@12153128-4`. It contains 12 permanent Wuling sale targets and four activity targets. Select active offers with the same controls as Valley IV. [Catalog maintenance](DATA.md) · [AKEData manifest](https://data.akedata.wiki/manifest.json)
+
+## Reference scenario
+
+- The Wuling City Core uses an **80 × 80** build grid and Jingyu Valley uses **50 × 50**, based on published builds. The Depot Bus and conduit outlet coordinates are proposed placements on those grids. Install those pieces and connect the outlets before building a generated factory. Both areas enable straight pipe-over-belt crossings. [Original Wuling Core blueprint](https://www.taptap.cn/moment/783784207322188359) · [Jingyu Valley build](https://talospioneers.com/en/blueprints/01ktgh6qsdvw434smfq0ty8g8r) · [Player observation of pipe placement](https://www.reddit.com/r/ArknightsEndfield/comments/1qrlwsq/valley_iv_base_is_smaller_than_wuling_base/)
+- The regional Depot budget uses **540 Originium Ore, 120 Ferrium Ore, and 420 Cuprium Ore per minute** from a published Wuling and Yinglung build. It assumes the corresponding mining is online. Power and storage use the supplied save values. The 16-Forge cap assumes Forge Expansion V. [Builder’s resource measurements](https://www.reddit.com/r/ArknightsEndfield/comments/1v5as81/updated_w_asia_blueprints_wuling_yinglung_only/) · [Forge of the Sky research](https://endfieldtools.dev/aic-tech-tree/forge-of-the-sky)
+- Each area assumes three 60/min water pumps. Merge two pumps into its `*_water_pair` outlet and connect the third to `*_water_single`. The City Inergen outlet assumes three extractors and the Jingyu outlet assumes one. The City Xiragen outlet assumes the 100/min North Wuling line. Its Precipitation Acid outlet assumes an acid-resistant pump linked back to the city. The dataset includes the power draw of these pumps. [Wuling and Jingyu pump setup](https://endfieldhub.org/guides/endgame-blueprints-part-11) · [Jingyu Valley vents](https://endfield.wiki.gg/wiki/Jingyu_Valley) · [Builder’s acid and Xiragen links to the Core](https://www.reddit.com/r/Endfield/comments/1vxr2yb/very_late_post_but_here_is_my_legitimately_maxed/)
+- Stable and Acrid use **6 gas/min** each and a **13 × 13** coverage square. The catalog disperser footprint is 3 × 3, giving five tiles of extension per side. [Disperser measurements](https://endfield.wiki.gg/wiki/Gas_Dispersing_Unit) · [Acrid environment](https://endfield.wiki.gg/wiki/Stable_ENV)
+
+Other Sub-PACs, array measurements, rebuilding deliveries, and additional infrastructure still depend on the setup you want to model. Add those as described below.
 
 ## Enter regional values in `data/wuling/region.json`
 
